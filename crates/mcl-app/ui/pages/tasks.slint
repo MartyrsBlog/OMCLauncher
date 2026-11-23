@@ -1,0 +1,312 @@
+import { Tokens } from "../theme.slint";
+import { TaskRow, TasksPageModel } from "../models.slint";
+import { Button, ButtonSize, ButtonVariant } from "../components/button.slint";
+import { Card } from "../components/card.slint";
+import { Icon } from "../components/icon.slint";
+import { LinkText } from "../components/link.slint";
+import { EmptyState } from "../components/empty-state.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component TasksPage inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    in property <[TaskRow]> tasks;
+    in property <TasksPageModel> page;
+
+    callback toggle-task(int);
+    callback clear-finished;
+    callback pause-all;
+    callback open-settings();
+
+    background: transparent;
+
+    pure function bar-color(state: string) -> brush {
+        if (state == "失败") { return Tokens.danger; }
+        if (state == "完成") { return Tokens.success; }
+        if (state == "已暂停") { return #B9BEC7; }
+        return Tokens.primary;
+    }
+
+    pure function state-color(state: string) -> brush {
+        if (state == "失败") { return Tokens.danger; }
+        if (state == "完成") { return Tokens.success; }
+        if (state == "已暂停") { return Tokens.text-secondary; }
+        return Tokens.primary;
+    }
+
+    VerticalLayout {
+        padding: Tokens.page-padding;
+        spacing: Tokens.space-3;
+
+        // ── 操作行 ──
+        HorizontalLayout {
+            height: 28px;
+            spacing: Tokens.space-4;
+
+            Text {
+                text: root.page.hint;
+                font-size: Tokens.font-micro;
+                color: Tokens.text-secondary;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+
+            if root.page.running > 0 : LinkText {
+                text: "全部暂停";
+                clicked => { root.pause-all(); }
+            }
+
+            Button {
+                text: "清除已完成";
+                variant: ButtonVariant.Secondary;
+                size: ButtonSize.Small;
+                min-width: 116px;
+                enabled: root.page.done > 0 || root.page.failed > 0;
+                clicked => { root.clear-finished(); }
+            }
+        }
+
+        // ── 统计卡（白底四列，竖向分隔线）──
+        Card {
+            height: 76px;
+
+            HorizontalLayout {
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: transparent;
+                    VerticalLayout {
+                        padding-left: 24px;
+                        padding-top: 14px;
+                        spacing: 2px;
+                        Text { text: "进行中"; font-size: Tokens.font-micro; color: Tokens.text-secondary; height: 16px; }
+                        Text { text: round(root.page.running); font-size: 16px; font-weight: 600; color: Tokens.text; height: 22px; vertical-alignment: bottom; }
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: transparent;
+
+                    Rectangle { x: 0; y: 16px; width: 1px; height: parent.height - 32px; background: Tokens.divider-row; }
+
+                    VerticalLayout {
+                        padding-left: 24px;
+                        padding-top: 14px;
+                        spacing: 2px;
+                        Text { text: "已完成"; font-size: Tokens.font-micro; color: Tokens.text-secondary; height: 16px; }
+                        Text { text: round(root.page.done); font-size: 16px; font-weight: 600; color: Tokens.text; height: 22px; vertical-alignment: bottom; }
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: transparent;
+
+                    Rectangle { x: 0; y: 16px; width: 1px; height: parent.height - 32px; background: Tokens.divider-row; }
+
+                    VerticalLayout {
+                        padding-left: 24px;
+                        padding-top: 14px;
+                        spacing: 2px;
+                        Text { text: "失败"; font-size: Tokens.font-micro; color: Tokens.text-secondary; height: 16px; }
+                        Text { text: round(root.page.failed); font-size: 16px; font-weight: 600; color: root.page.failed > 0 ? Tokens.danger : Tokens.text; height: 22px; vertical-alignment: bottom; }
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: transparent;
+
+                    Rectangle { x: 0; y: 16px; width: 1px; height: parent.height - 32px; background: Tokens.divider-row; }
+
+                    VerticalLayout {
+                        padding-left: 24px;
+                        padding-top: 14px;
+                        spacing: 2px;
+                        Text { text: "本次下载"; font-size: Tokens.font-micro; color: Tokens.text-secondary; height: 16px; }
+                        Text { text: root.page.volume; font-size: 16px; font-weight: 600; color: Tokens.text; height: 22px; vertical-alignment: bottom; overflow: elide; }
+                    }
+                }
+            }
+        }
+
+        // ── 任务卡 ──
+        Card {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                if root.tasks.length == 0 : EmptyState {
+                    title: "队列是空的";
+                    hint: "开始安装版本或资源后，下载进度会显示在这里。";
+                    icon: 5;
+                }
+
+                if root.tasks.length > 0 : ScrollView {
+                    vertical-stretch: 1;
+                    vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+                    viewport-width: self.width;
+                    viewport-height: self.height;
+
+                    VerticalLayout {
+                        padding-left: 24px;
+                        padding-right: 24px;
+
+                        for task in root.tasks : Rectangle {
+                            height: 120px;
+
+                            Rectangle {
+                                y: parent.height - 1px;
+                                width: parent.width;
+                                height: 1px;
+                                background: Tokens.divider-row;
+                            }
+
+                            HorizontalLayout {
+                                padding-top: 26px;
+                                padding-bottom: 26px;
+                                spacing: 16px;
+
+                                Rectangle {
+                                    width: 40px;
+                                    height: 40px;
+                                    border-radius: 9px;
+                                    background: task.state == "失败" ? Tokens.danger-soft : Tokens.primary-soft;
+
+                                    Icon {
+                                        kind: 5;
+                                        icon-size: 18px;
+                                        weight: 1.6px;
+                                        icon-color: task.state == "失败" ? Tokens.danger : Tokens.primary;
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    width: 340px;
+                                    spacing: 4px;
+
+                                    Text {
+                                        text: task.title;
+                                        font-size: Tokens.font-label;
+                                        font-weight: 600;
+                                        color: Tokens.text;
+                                        height: 18px;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: task.detail;
+                                        font-size: Tokens.font-micro;
+                                        color: Tokens.text-secondary;
+                                        height: 16px;
+                                        overflow: elide;
+                                    }
+                                }
+
+                                // 进度条
+                                Rectangle {
+                                    width: 420px;
+                                    height: 6px;
+                                    border-radius: 3px;
+                                    background: #E8EAEE;
+
+                                    Rectangle {
+                                        width: parent.width * task.progress;
+                                        height: 100%;
+                                        border-radius: 3px;
+                                        background: root.bar-color(task.state);
+                                    }
+                                }
+
+                                Text {
+                                    width: 60px;
+                                    text: task.percent;
+                                    font-size: 11.5px;
+                                    color: Tokens.text-secondary;
+                                    vertical-alignment: center;
+                                }
+
+                                Text {
+                                    width: 90px;
+                                    text: task.state;
+                                    font-size: 11.5px;
+                                    color: root.state-color(task.state);
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+
+                                Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                                // 行尾：完成 = 勾；已暂停 / 失败 = 继续 / 重试；进行中 = 暂停
+                                if task.state == "完成" : Icon {
+                                    width: 16px;
+                                    height: 16px;
+                                    kind: 13;
+                                    icon-size: 16px;
+                                    weight: 1.8px;
+                                    icon-color: Tokens.success;
+                                }
+
+                                if task.state == "已暂停" || task.state == "失败" : Button {
+                                    text: task.state == "失败" ? "重试" : "继续";
+                                    variant: ButtonVariant.Secondary;
+                                    size: ButtonSize.Small;
+                                    min-width: 64px;
+                                    clicked => { root.toggle-task(task.id); }
+                                }
+
+                                if task.state == "下载中" || task.state == "等待中" : Rectangle {
+                                    width: 28px;
+                                    height: 28px;
+                                    border-radius: 6px;
+                                    background: pause-touch.has-hover ? Tokens.surface-hover : transparent;
+
+                                    Icon {
+                                        kind: 5;
+                                        icon-size: 16px;
+                                        weight: 1.6px;
+                                        icon-color: Tokens.text;
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                    }
+
+                                    pause-touch := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.toggle-task(task.id); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 卡内底部：下载设置摘要（点击进设置）
+                Rectangle {
+                    height: 44px;
+
+                    Rectangle {
+                        x: 24px;
+                        width: parent.width - 48px;
+                        height: 1px;
+                        background: Tokens.divider-row;
+                    }
+
+                    Text {
+                        x: 24px;
+                        y: 14px;
+                        text: root.page.source-hint;
+                        font-size: Tokens.font-micro;
+                        color: Tokens.text-secondary;
+                        overflow: elide;
+                    }
+
+                    settings-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.open-settings(); }
+                    }
+                }
+            }
+        }
+    }
+}

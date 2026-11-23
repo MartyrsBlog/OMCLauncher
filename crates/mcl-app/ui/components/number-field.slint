@@ -1,0 +1,54 @@
+import { Tokens } from "../theme.slint";
+import { Button, ButtonSize, ButtonVariant } from "./button.slint";
+import { TextField } from "./text-field.slint";
+
+// 数字步进器：− / 输入 / +，直接输入时收敛到 [minimum, maximum]。
+export component NumberField inherits Rectangle {
+    in-out property <int> value: 0;
+    in property <int> minimum: 0;
+    in property <int> maximum: 99999;
+    callback edited(int);
+
+    width: 160px;
+    height: 36px;
+    horizontal-stretch: 0;
+    background: transparent;
+
+    property <string> draft: "\{root.value}";
+    changed value => { root.draft = "\{root.value}"; }
+
+    HorizontalLayout {
+        spacing: 4px;
+
+        Button {
+            text: "−";
+            size: ButtonSize.Small;
+            min-width: 30px;
+            clicked => {
+                root.value = max(root.minimum, root.value - 1);
+                root.edited(root.value);
+            }
+        }
+
+        TextField {
+            horizontal-stretch: 1;
+            text <=> root.draft;
+            edited(text) => {
+                let parsed = round(text.to-float());
+                root.value = max(root.minimum, min(root.maximum, parsed));
+                root.draft = "\{root.value}";
+                root.edited(root.value);
+            }
+        }
+
+        Button {
+            text: "+";
+            size: ButtonSize.Small;
+            min-width: 30px;
+            clicked => {
+                root.value = min(root.maximum, root.value + 1);
+                root.edited(root.value);
+            }
+        }
+    }
+}

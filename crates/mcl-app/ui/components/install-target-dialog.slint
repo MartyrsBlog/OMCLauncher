@@ -1,0 +1,192 @@
+import { Tokens } from "../theme.slint";
+import { InstallTargetState } from "../models.slint";
+import { Button, ButtonVariant, ButtonSize } from "./button.slint";
+
+// 安装弹窗（列表「安装」与详情「安装此版本」共用）。
+// 路径等于实例的默认资源目录 → 按钮「安装」；否则只是保存一份文件 → 按钮「保存」。
+export component InstallTargetDialog inherits Rectangle {
+    in property <InstallTargetState> state;
+
+    callback browse();
+    callback confirm();
+    callback cancel();
+
+    if root.state.open : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Tokens.overlay;
+
+        // 点遮罩取消
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.cancel(); }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 480px;
+            height: body.preferred-height;
+            border-radius: Tokens.radius-lg;
+            background: Tokens.surface;
+            border-width: 1px;
+            border-color: Tokens.border;
+            drop-shadow-color: Tokens.shadow-raise;
+            drop-shadow-blur: 24px;
+            drop-shadow-offset-y: 8px;
+
+            // 吞掉卡片内的点击，避免穿透到遮罩
+            TouchArea {
+                width: 100%;
+                height: 100%;
+            }
+
+            body := VerticalLayout {
+                padding: 24px;
+                spacing: 0px;
+
+                Text {
+                    text: root.state.title;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: Tokens.text;
+                    height: 22px;
+                    horizontal-alignment: left;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                Rectangle { height: 4px; background: transparent; }
+
+                Text {
+                    text: root.state.subtitle;
+                    font-size: 11.5px;
+                    color: Tokens.text-secondary;
+                    height: 16px;
+                    horizontal-alignment: left;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                Rectangle { height: 18px; background: transparent; }
+
+                // 目标实例
+                HorizontalLayout {
+                    height: 24px;
+                    spacing: 16px;
+
+                    Text {
+                        width: 64px;
+                        text: "目标实例";
+                        font-size: 11.5px;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+
+                    Text {
+                        text: root.state.instance;
+                        font-size: 12px;
+                        color: Tokens.text;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+                }
+
+                Rectangle { height: 10px; background: transparent; }
+
+                // 安装/保存到
+                HorizontalLayout {
+                    height: 32px;
+                    spacing: 16px;
+
+                    Text {
+                        width: 64px;
+                        text: root.state.inside ? "安装到" : "保存到";
+                        font-size: 11.5px;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+
+                    Rectangle {
+                        height: 32px;
+                        horizontal-stretch: 1;
+                        border-radius: 6px;
+                        background: Tokens.surface;
+                        border-width: 1px;
+                        border-color: Tokens.border-strong;
+
+                        Text {
+                            x: 10px;
+                            width: parent.width - 20px;
+                            height: parent.height;
+                            text: root.state.path;
+                            font-size: 11px;
+                            font-family: "monospace";
+                            color: Tokens.text-cell;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            overflow: elide;
+                        }
+                    }
+
+                    Button {
+                        text: "浏览…";
+                        variant: ButtonVariant.Secondary;
+                        size: ButtonSize.Small;
+                        min-width: 64px;
+                        clicked => { root.browse(); }
+                    }
+                }
+
+                Rectangle { height: 12px; background: transparent; }
+
+                // 提示 / 确认条
+                Rectangle {
+                    height: hint-text.preferred-height + 16px;
+                    border-radius: 6px;
+                    background: root.state.inside ? #F7F8FA : #FDF4E6;
+                    border-width: root.state.inside ? 0px : 1px;
+                    border-color: #F0D9B5;
+
+                    hint-text := Text {
+                        x: 10px;
+                        y: 8px;
+                        width: parent.width - 20px;
+                        text: root.state.hint;
+                        font-size: 11px;
+                        color: root.state.inside ? Tokens.text-secondary : #8A5A12;
+                        wrap: word-wrap;
+                        horizontal-alignment: left;
+                    }
+                }
+
+                Rectangle { height: 20px; background: transparent; }
+
+                HorizontalLayout {
+                    height: 32px;
+                    spacing: 12px;
+                    alignment: end;
+
+                    Button {
+                        text: "取消";
+                        variant: ButtonVariant.Secondary;
+                        min-width: 80px;
+                        clicked => { root.cancel(); }
+                    }
+
+                    Button {
+                        text: root.state.inside ? "安装" : "保存";
+                        variant: ButtonVariant.Primary;
+                        min-width: 80px;
+                        clicked => { root.confirm(); }
+                    }
+                }
+            }
+        }
+    }
+}

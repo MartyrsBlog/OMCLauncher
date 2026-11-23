@@ -1,0 +1,110 @@
+import { Tokens } from "../theme.slint";
+import { Button, ButtonVariant } from "./button.slint";
+import { Icon } from "./icon.slint";
+
+// 空态：图标 + 标题 + 一句可操作的提示 + 可选主按钮。
+// 垂直居中用上下两个弹性占位实现（布局驱动的居中，不写死 padding）。
+export component EmptyState inherits Rectangle {
+    in property <string> title;
+    in property <string> hint: "";
+    in property <string> action-text: "";
+    in property <string> action-text-2: "";
+    in property <string> link-text: "";
+    // 图标 kind（见 icon.slint）
+    in property <int> icon: 2;
+
+    callback action();
+    callback action-2();
+    callback link();
+
+    background: transparent;
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 0;
+
+        Rectangle { vertical-stretch: 1; background: transparent; }
+
+        HorizontalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: 56px;
+                height: 56px;
+                border-radius: 28px;
+                background: Tokens.surface-muted;
+
+                Icon {
+                    kind: root.icon;
+                    icon-size: 26px;
+                    weight: 1.4px;
+                    icon-color: Tokens.text-tertiary;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
+        }
+
+        Rectangle { height: 16px; background: transparent; }
+
+        Text {
+            text: root.title;
+            font-size: 17px;
+            font-weight: 600;
+            color: Tokens.text;
+            horizontal-alignment: center;
+            height: 24px;
+        }
+
+        if root.hint != "" : Text {
+            text: root.hint;
+            font-size: 13px;
+            color: Tokens.text-secondary;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            height: self.preferred-height;
+        }
+
+        if root.action-text != "" : HorizontalLayout {
+            alignment: center;
+            padding-top: 20px;
+            spacing: 12px;
+
+            Button {
+                text: root.action-text;
+                variant: ButtonVariant.Primary;
+                height: 36px;
+                min-width: 160px;
+                clicked => { root.action(); }
+            }
+
+            if root.action-text-2 != "" : Button {
+                text: root.action-text-2;
+                variant: ButtonVariant.Secondary;
+                height: 36px;
+                min-width: 148px;
+                clicked => { root.action-2(); }
+            }
+        }
+
+        if root.link-text != "" : HorizontalLayout {
+            alignment: center;
+            padding-top: 16px;
+            height: 28px;
+
+            Text {
+                text: root.link-text;
+                font-size: 12.5px;
+                color: Tokens.primary;
+                vertical-alignment: center;
+
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.link(); }
+                }
+            }
+        }
+
+        Rectangle { vertical-stretch: 1; background: transparent; }
+    }
+}

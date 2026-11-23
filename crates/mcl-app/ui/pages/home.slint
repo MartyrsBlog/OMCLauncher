@@ -1,0 +1,717 @@
+import { Tokens } from "../theme.slint";
+import { InstanceRow } from "../models.slint";
+import { Button, ButtonSize, ButtonVariant } from "../components/button.slint";
+import { Card } from "../components/card.slint";
+import { Badge, BadgeTone } from "../components/badge.slint";
+import { Icon } from "../components/icon.slint";
+import { LinkText } from "../components/link.slint";
+import { InstanceAvatar } from "../components/instance-avatar.slint";
+import { EmptyState } from "../components/empty-state.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
+
+// 所有分栏走 HorizontalLayout / VerticalLayout；只有 Hero 内部浮层用绝对定位。
+// 首次启动的一行：16px 图标 + 文案 + 右侧动作（按钮由调用方通过 @children 给）
+component StartRow inherits Rectangle {
+    in property <string> label;
+    in property <color> dot: #C7CBD1;
+    in property <bool> emphasis: false;
+    in property <bool> divider: false;
+
+    height: 54px;
+    background: transparent;
+
+    if root.divider : Rectangle {
+        y: parent.height - 1px;
+        width: parent.width;
+        height: 1px;
+        background: Tokens.divider-row;
+    }
+
+    HorizontalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 10px;
+
+        // 16px 槽位里放 8px 圆点；布局交叉轴不会替固定高度子项居中，
+        // 所以外层给满行高、内层用 y 居中。
+        Rectangle {
+            width: 16px;
+            height: root.height;
+            background: transparent;
+
+            Rectangle {
+                x: 4px;
+                y: (parent.height - self.height) / 2;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: root.dot;
+            }
+        }
+
+        Text {
+            text: root.label;
+            font-size: 13px;
+            font-weight: root.emphasis ? 600 : 400;
+            color: Tokens.text;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+
+        @children
+    }
+}
+
+component EnvironmentRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+
+    height: 38px;
+    background: transparent;
+
+    Text {
+        x: 0px;
+        width: 120px;
+        height: parent.height;
+        text: root.label;
+        font-size: 11.5px;
+        color: Tokens.text-secondary;
+        vertical-alignment: center;
+        horizontal-alignment: left;
+    }
+
+    Text {
+        x: 120px;
+        width: parent.width - 120px;
+        height: parent.height;
+        text: root.value;
+        font-size: 11.5px;
+        color: Tokens.text;
+        vertical-alignment: center;
+        horizontal-alignment: right;
+        overflow: elide;
+    }
+}
+
+export component HomePage inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    in property <[InstanceRow]> instances;
+    // 游戏异常退出横幅（空 = 不显示）
+    in property <string> crash-banner: "";
+    // 当前账号显示名（空 = 未登录）
+    in property <string> greeting-name: "";
+    // 预格式化的内存提示，如 "内存 4 GB · 使用全局默认"
+    in property <string> memory-hint: "";
+    in property <image> hero-image;
+    in property <bool> has-hero: false;
+    in property <string> java-hint: "";
+    in property <bool> java-ready: false;
+    in property <string> account-line: "";
+    in property <string> java-line: "";
+    in property <string> memory-line: "";
+    in property <string> source-line: "";
+    // 更新横幅文案（空 = 不显示）
+    in property <string> update-banner: "";
+
+    callback launch-instance(string);
+    callback select-instance(string);
+    callback start-install();
+    callback open-instance(string);
+    callback open-instances();
+    callback open-settings();
+    callback open-crash();
+    callback dismiss-crash();
+    // 首次启动三步与导入
+    callback open-login();
+    callback download-java();
+    callback pick-import();
+    callback scan-instances();
+    callback open-update();
+
+    background: transparent;
+
+    ScrollView {
+        viewport-width: self.width;
+        viewport-height: body.preferred-height;
+
+        body := VerticalLayout {
+            width: parent.width;
+            padding-left: Tokens.page-padding;
+            padding-right: Tokens.page-padding;
+            padding-top: 32px;
+            padding-bottom: 24px;
+            spacing: 0px;
+
+            // ── 问候（80..124）──
+            Text {
+                text: root.instances.length == 0
+                    ? "欢迎使用 OMCLauncher"
+                    : (root.greeting-name == "" ? "欢迎回来" : "欢迎回来，" + root.greeting-name);
+                font-size: 22px;
+                font-weight: 700;
+                letter-spacing: -0.3px;
+                color: Tokens.text;
+                height: 24px;
+                vertical-alignment: center;
+                horizontal-alignment: left;
+                overflow: elide;
+            }
+
+            Rectangle { height: 4px; background: transparent; }
+
+            Text {
+                text: root.instances.length == 0
+                    ? "三步开始游戏。"
+                    : "你的世界已准备就绪。继续上次冒险，或整理一下实例。";
+                font-size: 11.5px;
+                color: Tokens.text-cell;
+                height: 16px;
+                vertical-alignment: center;
+                horizontal-alignment: left;
+                overflow: elide;
+            }
+
+            Rectangle { height: 16px; background: transparent; }
+
+            // ── Hero（200）：图片 + 左侧渐变遮罩 + 文案，不用内嵌深色卡 ──
+            if root.instances.length > 0 : Rectangle {
+                height: 200px;
+                border-radius: 10px;
+                background: Tokens.nav-card;
+                clip: true;
+
+                if root.has-hero : Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.hero-image;
+                    image-fit: cover;
+                }
+
+                Rectangle {
+                    width: 100%;
+                    height: 100%;
+                    background: @linear-gradient(90deg, #0B0D12D9 0%, #0B0D1200 64%);
+                }
+
+                // 右上角：安装状态（真实状态）
+                Rectangle {
+                    x: parent.width - 24px - 88px;
+                    y: 24px;
+                    width: 88px;
+                    height: 28px;
+                    border-radius: 14px;
+                    background: #12141AB3;
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 12px;
+                        spacing: 6px;
+
+                        Icon {
+                            kind: 13;
+                            icon-size: 12px;
+                            weight: 2px;
+                            icon-color: root.instances[0].installed ? #6FD6A6 : #F2B36B;
+                        }
+
+                        Text {
+                            text: root.instances[0].installed ? "已安装" : "未安装";
+                            font-size: Tokens.font-micro;
+                            color: #FFFFFFE6;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                Text {
+                    x: 28px;
+                    y: 26px;
+                    height: 16px;
+                    text: "继续游玩";
+                    font-size: Tokens.font-micro;
+                    font-weight: 600;
+                    color: #FFFFFF;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                }
+
+                Text {
+                    x: 28px;
+                    y: 50px;
+                    width: parent.width - 200px;
+                    height: 36px;
+                    text: root.instances[0].name;
+                    font-size: 26px;
+                    font-weight: 700;
+                    letter-spacing: -0.4px;
+                    color: #FFFFFF;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                    overflow: elide;
+                }
+
+                Text {
+                    x: 28px;
+                    y: 90px;
+                    width: parent.width - 200px;
+                    height: 16px;
+                    text: "Minecraft " + root.instances[0].version-line + " · " + root.instances[0].last-played;
+                    font-size: 11.5px;
+                    color: #FFFFFFD9;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                    overflow: elide;
+                }
+
+                // 启动游戏（96×32）
+                Rectangle {
+                    x: 28px;
+                    y: 132px;
+                    width: 96px;
+                    height: 32px;
+                    border-radius: 7px;
+                    background: hero-launch.has-hover ? Tokens.primary-hover : Tokens.primary;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 6px;
+
+                        Icon { kind: 7; icon-size: 12px; weight: 1.6px; icon-color: #FFFFFF; }
+                        Text {
+                            text: "启动游戏";
+                            font-size: 12.5px;
+                            font-weight: 600;
+                            color: #FFFFFF;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    hero-launch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.launch-instance(root.instances[0].id); }
+                    }
+                }
+
+                // 打开工作台（106×32，白描边）
+                Rectangle {
+                    x: 132px;
+                    y: 132px;
+                    width: 106px;
+                    height: 32px;
+                    border-radius: 7px;
+                    background: hero-open.has-hover ? #FFFFFF2E : #FFFFFF1A;
+                    border-width: 1px;
+                    border-color: #FFFFFFA6;
+
+                    Text {
+                        text: "打开工作台";
+                        font-size: 11.5px;
+                        font-weight: 500;
+                        color: #FFFFFF;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    hero-open := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.open-instance(root.instances[0].id); }
+                    }
+                }
+            }
+
+            // ── 更新横幅（36）：有更新信息时插在 Hero 下方 ──
+            if root.update-banner != "" : Rectangle {
+                height: 36px;
+                border-radius: 8px;
+                background: Tokens.surface;
+                border-width: 1px;
+                border-color: Tokens.border;
+
+                Text {
+                    x: 32px;
+                    height: parent.height;
+                    text: root.update-banner;
+                    font-size: 11.5px;
+                    color: Tokens.text;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                }
+
+                LinkText {
+                    x: parent.width - 24px - 56px;
+                    text: "查看更新";
+                    clicked => { root.open-update(); }
+                }
+            }
+
+            // ── 异常退出横幅（36，功能性警告）──
+            if root.crash-banner != "" : Rectangle {
+                height: 36px;
+                border-radius: 8px;
+                background: Tokens.danger-soft;
+                border-width: 1px;
+                border-color: #F3C9C9;
+
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 8px;
+                    spacing: 8px;
+
+                    Icon { kind: 14; icon-size: 14px; weight: 1.8px; icon-color: Tokens.danger; }
+
+                    Text {
+                        text: root.crash-banner;
+                        font-size: 11.5px;
+                        color: Tokens.danger;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+
+                    LinkText {
+                        text: "查看诊断";
+                        link-color: Tokens.danger;
+                        clicked => { root.open-crash(); }
+                    }
+
+                    Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 12px;
+                        background: close-touch.has-hover ? #F6D5D5 : transparent;
+
+                        Icon {
+                            kind: 10;
+                            icon-size: 14px;
+                            weight: 1.8px;
+                            icon-color: Tokens.danger;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        close-touch := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => { root.dismiss-crash(); }
+                        }
+                    }
+                }
+            }
+
+// ── 首次启动：三步开始 + 导入入口 ──
+            if root.instances.length == 0 : VerticalLayout {
+                spacing: 24px;
+
+                // 三步开始
+                Card {
+                    height: 224px;
+
+                    VerticalLayout {
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        padding-top: 16px;
+                        padding-bottom: 27px;
+                        spacing: 0px;
+
+                        Text {
+                            text: "开始使用";
+                            font-size: 15px;
+                            font-weight: 600;
+                            color: Tokens.text;
+                            height: 19px;
+                            vertical-alignment: center;
+                        }
+
+                        StartRow {
+                            dot: #C7CBD1;
+                            label: "登录微软账号（可选，离线也能玩）";
+                            divider: true;
+                            Button {
+                                text: "登录";
+                                variant: ButtonVariant.Secondary;
+                                size: ButtonSize.Small;
+                                min-width: 80px;
+                                clicked => { root.open-login(); }
+                            }
+                        }
+
+                        StartRow {
+                            dot: #F0A64B;
+                            label: root.java-hint;
+                            divider: true;
+                            Button {
+                                text: root.java-ready ? "已就绪" : "立即下载";
+                                variant: ButtonVariant.Secondary;
+                                size: ButtonSize.Small;
+                                min-width: 88px;
+                                enabled: !root.java-ready;
+                                clicked => { root.download-java(); }
+                            }
+                        }
+
+                        StartRow {
+                            dot: Tokens.primary;
+                            label: "新建第一个实例";
+                            emphasis: true;
+                            Button {
+                                text: "新建实例";
+                                variant: ButtonVariant.Primary;
+                                size: ButtonSize.Small;
+                                min-width: 92px;
+                                clicked => { root.start-install(); }
+                            }
+                        }
+                    }
+                }
+
+                // 已有游戏 / 整合包
+                Card {
+                    height: 110px;
+
+                    VerticalLayout {
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        padding-top: 18px;
+                        padding-bottom: 30px;
+                        spacing: 12px;
+
+                        Text {
+                            text: "已有现成的游戏或整合包？";
+                            font-size: 15px;
+                            font-weight: 600;
+                            color: Tokens.text;
+                            height: 20px;
+                            vertical-alignment: center;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            height: 30px;
+
+                            Button {
+                                text: "导入整合包";
+                                variant: ButtonVariant.Secondary;
+                                size: ButtonSize.Small;
+                                min-width: 120px;
+                                clicked => { root.pick-import(); }
+                            }
+                            Button {
+                                text: "扫描本地目录";
+                                variant: ButtonVariant.Secondary;
+                                size: ButtonSize.Small;
+                                min-width: 128px;
+                                clicked => { root.scan-instances(); }
+                            }
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                        }
+                    }
+                }
+            }
+
+            // ── 最近实例 + 启动环境（有实例时）──
+            if root.instances.length > 0 : VerticalLayout {
+                spacing: 0px;
+
+                // 分组标题行（28）
+                Rectangle {
+                    height: 28px;
+                    background: transparent;
+
+                    Text {
+                        x: 0px;
+                        height: parent.height;
+                        text: "最近实例";
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Tokens.text;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+
+                    LinkText {
+                        x: parent.width - 40px;
+                        text: "查看全部";
+                        clicked => { root.open-instances(); }
+                    }
+                }
+
+                Rectangle { height: 4px; background: transparent; }
+
+                HorizontalLayout {
+                    height: 212px;
+                    spacing: 24px;
+
+                    // 最近实例（760）
+                    Card {
+                        width: 760px;
+
+                        VerticalLayout {
+                            padding-top: 16px;
+                            padding-bottom: 16px;
+                            spacing: 0px;
+
+                            for inst in root.instances : Rectangle {
+                                height: 62px;
+                                background: transparent;
+
+                                InstanceAvatar {
+                                    x: 20px;
+                                    y: (parent.height - self.height) / 2;
+                                    avatar-size: 36px;
+                                    source: inst.icon;
+                                    has-image: inst.has-icon;
+                                    fallback: inst.icon-text;
+                                }
+
+                                Text {
+                                    x: 72px;
+                                    y: 12px;
+                                    width: 480px;
+                                    height: 20px;
+                                    text: inst.name;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    color: Tokens.text;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: left;
+                                    overflow: elide;
+                                }
+
+                                Text {
+                                    x: 72px;
+                                    y: 32px;
+                                    width: 480px;
+                                    height: 16px;
+                                    text: inst.mc-version + " · " + inst.loader-name + " · 上次游玩 " + inst.last-played;
+                                    font-size: Tokens.font-micro;
+                                    color: Tokens.text-secondary;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: left;
+                                    overflow: elide;
+                                }
+
+                                Rectangle {
+                                    x: parent.width - 20px - 64px;
+                                    y: 17px;
+                                    width: 64px;
+                                    height: 28px;
+                                    border-radius: 7px;
+                                    background: row-launch.has-hover ? Tokens.canvas : Tokens.surface;
+                                    border-width: 1px;
+                                    border-color: Tokens.border-strong;
+
+                                    Text {
+                                        text: "启动";
+                                        font-size: 11.5px;
+                                        color: Tokens.text;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+
+                                    row-launch := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.launch-instance(inst.id); }
+                                    }
+                                }
+
+                                row-touch := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.open-instance(inst.id); }
+                                }
+                            }
+                        }
+                    }
+
+                    // 启动环境（398）
+                    Card {
+                        width: 398px;
+
+                        VerticalLayout {
+                            padding-left: 20px;
+                            padding-right: 20px;
+                            padding-top: 16px;
+                            padding-bottom: 14px;
+                            spacing: 0px;
+
+                            Text {
+                                text: "启动环境";
+                                font-size: 13px;
+                                font-weight: 600;
+                                color: Tokens.text;
+                                height: 24px;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                            }
+
+                            Rectangle { height: 10px; background: transparent; }
+
+                            EnvironmentRow { label: "账号"; value: root.account-line; }
+                            EnvironmentRow { label: "Java"; value: root.java-line; }
+                            EnvironmentRow { label: "内存"; value: root.memory-line; }
+                            EnvironmentRow { label: "下载源"; value: root.source-line; }
+                        }
+                    }
+                }
+
+                Rectangle { height: 24px; background: transparent; }
+
+                // 导入与扫描（1182×128）
+                Card {
+                    height: 128px;
+
+                    Text {
+                        x: 24px;
+                        y: 16px;
+                        height: 28px;
+                        text: "导入与扫描";
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Tokens.text;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+
+                    Button {
+                        x: 24px;
+                        y: 56px;
+                        width: 112px;
+                        height: 28px;
+                        text: "导入整合包";
+                        variant: ButtonVariant.Secondary;
+                        size: ButtonSize.Small;
+                        clicked => { root.pick-import(); }
+                    }
+
+                    Button {
+                        x: 148px;
+                        y: 56px;
+                        width: 128px;
+                        height: 28px;
+                        text: "扫描本地目录";
+                        variant: ButtonVariant.Secondary;
+                        size: ButtonSize.Small;
+                        clicked => { root.scan-instances(); }
+                    }
+
+                    Text {
+                        x: parent.width - 24px - 420px;
+                        y: 56px;
+                        width: 420px;
+                        height: 28px;
+                        text: "支持 Modrinth .mrpack · 收养含 versions/*/*.json 的目录";
+                        font-size: Tokens.font-micro;
+                        color: Tokens.text-tertiary;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+                }
+            }
+        }
+    }
+}

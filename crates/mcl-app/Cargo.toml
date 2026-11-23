@@ -1,0 +1,21 @@
+[package]
+name = "mcl-app"
+description = "OMCLauncher UI 壳（Slint）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+mcl-core = { path = "../mcl-core" }
+# 应用层：视图模型 / 任务编排（零 GUI 依赖，换壳时可原样复用）
+mcl-app-model = { path = "../mcl-app-model" }
+serde_json.workspace = true
+rfd.workspace = true
+slint.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true

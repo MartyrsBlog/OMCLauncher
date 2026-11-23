@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=OMCLauncher
+Name[zh_CN]=OMCLauncher 启动器
+GenericName=Minecraft Launcher
+GenericName[zh_CN]=Minecraft 启动器
+Comment=Lightweight native Minecraft launcher
+Comment[zh_CN]=轻量原生 Minecraft 启动器
+Exec=mclauncher
+Icon=mclauncher
+Terminal=false
+Categories=Game;
+Keywords=minecraft;launcher;mc;
+StartupNotify=true
+StartupWMClass=OMCLauncher

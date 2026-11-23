@@ -1,0 +1,52 @@
+import { Tokens } from "../theme.slint";
+import { Icon } from "./icon.slint";
+
+// 搜索框：白底胶囊 + 前置放大镜，聚焦时描边变主色。
+// 用无背景 `TextInput` 自绘，避免 std LineEdit 的双层框与文字偏移。
+export component SearchField inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder: "搜索";
+    in property <length> field-width: 360px;
+    in property <bool> compact: false;
+    callback edited(string);
+
+    width: root.field-width;
+    height: root.compact ? 28px : 40px;
+    horizontal-stretch: 0;
+    border-radius: Tokens.radius-sm;
+    background: Tokens.surface;
+    border-width: 1px;
+    border-color: input.has-focus ? Tokens.primary : Tokens.border;
+
+    Icon {
+        x: root.compact ? 9px : 18px;
+        y: (parent.height - self.height) / 2;
+        kind: 9;
+        icon-size: 16px;
+        weight: 1.8px;
+        icon-color: Tokens.text-tertiary;
+    }
+
+    input := TextInput {
+        x: root.compact ? 30px : 44px;
+        width: parent.width - self.x - 14px;
+        height: parent.height;
+        text <=> root.text;
+        font-size: root.compact ? 11.5px : 13px;
+        color: Tokens.text;
+        vertical-alignment: center;
+        edited => { root.edited(self.text); }
+    }
+
+    if input.text == "" : Text {
+        x: root.compact ? 30px : 44px;
+        width: parent.width - self.x - 14px;
+        height: parent.height;
+        text: root.placeholder;
+        font-size: root.compact ? 11.5px : 13px;
+        color: Tokens.text-tertiary;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+}

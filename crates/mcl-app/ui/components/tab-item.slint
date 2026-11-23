@@ -1,0 +1,57 @@
+import { Tokens } from "../theme.slint";
+
+export enum TabTone {
+    // 筛选器：选中为深色胶囊 + 白字
+    Dark,
+    // 页内标签：选中为浅蓝胶囊 + 主色文字
+    Soft,
+}
+
+// 胶囊标签：支持可选的计数徽标（-1 = 不显示）。
+export component TabItem inherits Rectangle {
+    in property <string> label;
+    in property <int> count: -1;
+    in property <bool> selected: false;
+    in property <TabTone> tone: TabTone.Soft;
+    in property <length> tab-height: 36px;
+    callback clicked();
+
+    height: root.tab-height;
+    horizontal-stretch: 0;
+    border-radius: root.tab-height / 2;
+    background: root.selected
+        ? (root.tone == TabTone.Dark ? Tokens.text : Tokens.primary-soft)
+        : touch.has-hover ? Tokens.surface-hover : transparent;
+
+    HorizontalLayout {
+        alignment: center;
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 6px;
+
+        Text {
+            text: root.label;
+            font-size: 13px;
+            font-weight: root.selected ? 600 : 400;
+            color: root.selected
+                ? (root.tone == TabTone.Dark ? Tokens.text-inverse : Tokens.primary)
+                : Tokens.text-secondary;
+            vertical-alignment: center;
+        }
+
+        if root.count >= 0 : Text {
+            text: "" + root.count;
+            font-size: 12px;
+            font-weight: 600;
+            color: root.selected
+                ? (root.tone == TabTone.Dark ? #FFFFFFB3 : Tokens.primary)
+                : Tokens.text-tertiary;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

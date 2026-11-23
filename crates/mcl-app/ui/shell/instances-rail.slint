@@ -1,0 +1,116 @@
+import { Tokens } from "../theme.slint";
+import { DirectoryItem, InstancesPageModel } from "../models.slint";
+import { RailGroup, RailItem } from "./page-rail.slint";
+
+// 实例库（02）与游戏目录管理（03b）共用；03b 下它只承担导航上下文，
+// 所以点击任意条目都回到实例库并带上筛选项。
+export component InstancesRail inherits Rectangle {
+    in property <[DirectoryItem]> directories;
+    in property <InstancesPageModel> page;
+
+    callback set-directory(string);
+    callback set-view(string);
+    callback set-filter(string);
+    callback open-directories();
+
+    width: Tokens.rail-width;
+    height: 100%;
+    background: Tokens.nav-surface;
+
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        height: 100%;
+        background: Tokens.border;
+    }
+
+    VerticalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 18px;
+        padding-bottom: 30px;
+        spacing: 20px;
+
+        VerticalLayout {
+            spacing: 0px;
+            RailGroup { label: "目录"; }
+            VerticalLayout {
+                spacing: 4px;
+
+                for dir in root.directories : RailItem {
+                    label: dir.label;
+                    count: dir.count;
+                    selected: dir.selected;
+                    clicked => { root.set-directory(dir.path); }
+                }
+
+                // 添加目录…（进入游戏目录管理页）
+                RailItem {
+                    label: "添加目录…";
+                    icon: 8;
+                    accent: true;
+                    clicked => { root.open-directories(); }
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 0px;
+            RailGroup { label: "视图"; }
+            VerticalLayout {
+                spacing: 4px;
+                RailItem {
+                    label: "全部实例";
+                    count: root.page.count-all;
+                    selected: root.page.view == "all";
+                    clicked => { root.set-view("all"); }
+                }
+                RailItem {
+                    label: "最近游玩";
+                    count: root.page.count-recent;
+                    selected: root.page.view == "recent";
+                    clicked => { root.set-view("recent"); }
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 0px;
+            RailGroup { label: "加载器"; }
+            VerticalLayout {
+                spacing: 4px;
+                RailItem {
+                    label: "原版";
+                    count: root.page.count-vanilla;
+                    selected: root.page.filter == "vanilla";
+                    clicked => { root.set-filter(root.page.filter == "vanilla" ? "all" : "vanilla"); }
+                }
+                RailItem {
+                    label: "Fabric";
+                    count: root.page.count-fabric;
+                    selected: root.page.filter == "fabric";
+                    clicked => { root.set-filter(root.page.filter == "fabric" ? "all" : "fabric"); }
+                }
+                RailItem {
+                    label: "Forge";
+                    count: root.page.count-forge;
+                    selected: root.page.filter == "forge";
+                    clicked => { root.set-filter(root.page.filter == "forge" ? "all" : "forge"); }
+                }
+                RailItem {
+                    label: "NeoForge";
+                    count: root.page.count-neoforge;
+                    selected: root.page.filter == "neoforge";
+                    clicked => { root.set-filter(root.page.filter == "neoforge" ? "all" : "neoforge"); }
+                }
+                RailItem {
+                    label: "Quilt";
+                    count: root.page.count-quilt;
+                    selected: root.page.filter == "quilt";
+                    clicked => { root.set-filter(root.page.filter == "quilt" ? "all" : "quilt"); }
+                }
+            }
+        }
+    }
+
+}

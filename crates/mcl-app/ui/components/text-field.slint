@@ -1,0 +1,44 @@
+import { Tokens } from "../theme.slint";
+
+// 文本输入：白底、8px 圆角、聚焦主色描边；无背景 TextInput 自绘，
+// 避免 std LineEdit 的双层框与文字偏移。
+export component TextField inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder: "";
+    in property <bool> enabled: true;
+    in property <length> field-height: 36px;
+    in property <length> text-size: 13px;
+    callback edited(string);
+    callback accepted(string);
+
+    height: root.field-height;
+    horizontal-stretch: 0;
+    border-radius: 8px;
+    background: root.enabled ? Tokens.surface : Tokens.surface-muted;
+    border-width: 1px;
+    border-color: input.has-focus ? Tokens.primary : Tokens.border;
+    opacity: root.enabled ? 1.0 : 0.6;
+
+    input := TextInput {
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        vertical-alignment: center;
+        color: Tokens.text;
+        font-size: root.text-size;
+        enabled: root.enabled;
+        edited => { root.edited(self.text); }
+        accepted => { root.accepted(self.text); }
+    }
+
+    if input.text == "" : Text {
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        text: root.placeholder;
+        font-size: root.text-size;
+        color: Tokens.text-tertiary;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}

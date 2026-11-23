@@ -1,0 +1,580 @@
+// UI 数据行模型：所有展示字符串在 Rust 侧预格式化，
+// Slint 侧只做纯渲染（避免界面层承担格式化逻辑，便于 i18n 与测试）。
+
+export struct InstanceRow {
+    id: string,
+    name: string,
+    // 预格式化摘要，如 "1.20.1 · Fabric 0.15.11 · 187 个模组"
+    info: string,
+    // 从实例客户端 jar 提取的草方块图标；无 jar 时 has-icon 为 false
+    icon: image,
+    has-icon: bool,
+    // 无图标时的占位字符（实例名首字）
+    icon-text: string,
+    // 是否为当前选中实例（首页 hero / 下载目标）
+    selected: bool,
+    // 版本 JSON 已落地（首页 hero 的状态徽标）
+    installed: bool,
+    // 预格式化的最近游玩时间，如 "今天" / "3 天前" / "尚未游玩"
+    last-played: string,
+    // 版本行：如 "1.20.1 · Fabric 0.15.11" / "26.3 · 原版"（不含安装状态）
+    version-line: string,
+    // 游戏版本行："Minecraft 1.20.1"
+    mc-line: string,
+    // 加载器行："Fabric 0.15.11" / "原版"
+    loader-line: string,
+    // 加载器 id：vanilla / fabric / forge / neoforge / quilt
+    loader: string,
+    // 实例所在游戏目录（绝对路径；多目录过滤用）
+    dir: string,
+    // 最近游玩过（「最近游玩」视图筛选用）
+    recent: bool,
+    // 状态列文案："当前实例" / "已安装" / "未安装"
+    status: string,
+    // 状态语义：0 中性 / 1 主色 / 2 成功 / 3 警告 / 4 危险
+    status-tone: int,
+    // 版本列：仅游戏版本号（如 "1.20.1"）
+    mc-version: string,
+    // 加载器列：仅加载器名（如 "Fabric" / "原版"，不带版本号）
+    loader-name: string,
+    // 多选态勾选
+    checked: bool,
+    // 路径展示行（家目录缩写成 ~）
+    dir-label: string,
+}
+
+// 实例库页面状态：搜索词与加载器筛选（筛选在 Rust 侧完成，见 mcl-app-model::filter）
+export struct InstancesPageModel {
+    query: string,
+    // 加载器筛选：all / vanilla / fabric / forge / neoforge / quilt
+    filter: string,
+    // 视图筛选：all / recent
+    view: string,
+    // 目录筛选（空 = 全部目录）
+    directory: string,
+    // 全部实例数（筛选前的总数）
+    count-all: int,
+    // 分组计数（左列角标：最近游玩 + 各加载器）
+    count-recent: int,
+    count-vanilla: int,
+    count-fabric: int,
+    count-forge: int,
+    count-neoforge: int,
+    count-quilt: int,
+    // 预格式化计数提示
+    count-hint: string,
+    // 空态提示（区分「没有实例」与「没有匹配」）
+    empty-hint: string,
+    // 多选态：true 时行首出现复选框、行尾动作隐藏、底部出现批量操作条
+    selecting: bool,
+    // 已勾选的实例 id
+    selected-ids: [string],
+    // 已选数量（= selected-ids 长度，UI 直接绑定）
+    selected-count: int,
+}
+
+// 工具栏动作（壳层右侧，由页面提供；实例库用「刷新 / 扫描目录 / 新建实例」）
+export struct ToolbarAction {
+    // 回调标识，由页面解释
+    id: string,
+    label: string,
+    // 图标 kind，0 = 无
+    icon: int,
+    // 主色按钮（一份工具栏最多一个）
+    primary: bool,
+    // 只显示图标（28×28 方形）
+    icon-only: bool,
+}
+
+// 游戏目录条目（实例库左列 + 目录管理页共用；label 默认取路径最后一段）
+export struct DirectoryItem {
+    label: string,
+    path: string,
+    count: int,
+    is-default: bool,
+    selected: bool,
+}
+
+export struct JavaRow {
+    path: string,
+    label: string,
+}
+
+export struct ModUpdateRow {
+    file: string,
+    latest: string,
+    url: string,
+}
+
+// 概览页信息行（标签 + 预格式化值）
+export struct InfoRow {
+    label: string,
+    value: string,
+}
+
+export struct ModRow {
+    // 文件名（已去掉 .disabled 后缀展示）
+    file-name: string,
+    // 来源：Modrinth / 手动（读实例的 installed.json 反查）
+    source: string,
+    // 预格式化大小，如 "1.2 MB"
+    size: string,
+    // 启用状态（禁用 = 磁盘上以 .disabled 结尾）
+    enabled: bool,
+    // 模组版本（读 jar 元数据，异步回填；读不到为空 = 显示 "—"）
+    version: string,
+}
+
+export struct VersionRow {
+    id: string,
+    name: string,
+    // release / snapshot / 旧版标签（仅用于色条）
+    kind: string,
+    // 预格式化摘要（日期 / 快照 + 日期）
+    info: string,
+    // Fabric 官方支持该版本（决定列表徽标与安装向导可选性）
+    fabric: bool,
+}
+
+export struct AccountRow {
+    id: string,
+    name: string,
+    // 离线 / 微软 / 外置（AccountKind::label）
+    kind: string,
+    // 预格式化摘要：如 "UUID 1a2b3c4d" 或 "令牌 6 天后过期"
+    info: string,
+    is-current: bool,
+    // 皮肤头像（64×64 皮肤头部）；无皮肤/拉取失败时 has-avatar=false，回落首字母
+    has-avatar: bool,
+    avatar: image,
+    // 头像占位字符（名称首字，按字符取而不是字节）
+    initial: string,
+}
+
+
+export struct TaskRow {
+    id: int,
+    title: string,
+    detail: string,
+    speed: string,
+    // 0.0 ~ 1.0
+    progress: float,
+    // running / paused / done / failed
+    state: string,
+    // 按钮文案：暂停 / 继续 / 重试
+    action: string,
+    // 非主任务（启动/修复等）：列表置灰，不进浮动汇总条
+    minor: bool,
+    // 预格式化的百分比，如 "68%"
+    percent: string,
+    total-mb: float,
+}
+
+// 下载任务页顶部统计（Rust 侧聚合）
+export struct TasksPageModel {
+    running: int,
+    paused: int,
+    done: int,
+    failed: int,
+    volume: string,
+    // 副标题
+    hint: string,
+    // 底部说明（下载源 / 并发 / 缓存）
+    source-hint: string,
+}
+
+// 实例组件行（管理页「组件」标签）
+export struct ComponentRow {
+    // vanilla / fabric / forge / neoforge / quilt
+    id: string,
+    name: string,
+    // 已安装版本；未安装时为空（有版本时只显示版本号，不再显示「已安装」）
+    version: string,
+    // 基础版本 / 未安装 / 即将支持（版本为空时显示该文案）
+    state: string,
+    // 安装 / 更换 / 空
+    action: string,
+    enabled: bool,
+    // 加载器图标
+    icon: image,
+    has-icon: bool,
+}
+
+// 内置图标选项（设置页图标选择器）
+export struct IconChoice {
+    // IconKind::id
+    id: string,
+    icon: image,
+}
+
+// 安装向导与组件页共用的加载器图标（启动时填充一次）
+export struct LoaderIcons {
+    vanilla: image,
+    fabric: image,
+    forge: image,
+    neoforge: image,
+    quilt: image,
+    optifine: image,
+    more: image,
+}
+
+// 崩溃诊断弹窗状态
+export struct CrashState {
+    open: bool,
+    title: string,
+    detail: string,
+    instance-id: string,
+}
+
+// 实例详情页模型：Rust 侧一次性填充，页面只读。
+// 收敛原先散落在 AppWindow 上的 7 个 detail-* 属性（R6：页面状态集中）。
+export struct DetailPageModel {
+    id: string,
+    name: string,
+    info: string,
+    // 局部左列用的短摘要（如「1.20.1 · Fabric」），页头仍用 info
+    rail-info: string,
+    // 游戏版本号（组件标签的副行用）
+    mc-version: string,
+    // 实例图标（客户端 jar 合成或自定义 icon.png）
+    icon: image,
+    has-icon: bool,
+    // 无图标时的占位字符
+    icon-text: string,
+    // 当前标签页：0 概览 / 1 组件 / 2 模组 / 3 日志 / 4 实例设置
+    tab: int,
+    // 概览信息（版本 / 加载器 / 内存 / Java / 目录）
+    info-rows: [InfoRow],
+    // 组件标签：原版 / Fabric / Forge / NeoForge / Quilt
+    components: [ComponentRow],
+    mods: [ModRow],
+    mods-hint: string,
+    log-lines: [string],
+    log-hint: string,
+    // 崩溃诊断（空 = 未发现高置信度问题）
+    log-diagnosis: string,
+    // 改名内联编辑状态（草稿只在保存时落库）
+    renaming: bool,
+    name-draft: string,
+    // 模组标签的搜索词
+    mod-query: string,
+    // 每实例游戏设置（管理页 → 游戏设置）
+    memory-mb: int,
+    game-width: int,
+    game-height: int,
+    fullscreen: bool,
+    jvm-args: string,
+    game-args: string,
+    java-path: string,
+    // auto / detected / custom（仅影响设置区展示；auto 时 java-path 为空）
+    java-mode: string,
+    // 该 MC 版本建议的 Java 主版本（如 "Java 21+"）
+    java-requirement: string,
+    icon-path-draft: string,
+    // 当前选中的内置图标 id（空 = 跟随加载器）
+    icon-kind: string,
+    // 图标选择器：两行，每行 7 个
+    icon-choices-a: [IconChoice],
+    icon-choices-b: [IconChoice],
+    settings-status: string,
+    // 检测到的 Java 运行时（「扫描」后填充）
+    java-options: [JavaRow],
+    // 模组更新检查结果
+    mod-updates: [ModUpdateRow],
+    mods-update-hint: string,
+}
+
+// 设置页模型：下载并发与共享目录回收状态（R6：页面状态集中）。
+export struct SettingsPageModel {
+    // 设置分区：0 下载与网络 / 1 游戏默认 / 2 存储与维护 / 3 外观与动效 / 4 关于
+    // 放在页面模型里，工具栏标签只做映射（AGENTS「UI 与逻辑解耦」第 2 条）
+    section: int,
+    download-concurrency: int,
+    gc-status: string,
+    gc-armed: bool,
+    // 网络代理（保存后重启生效）
+    proxy-url: string,
+    // auto / official / mirror
+    download-source: string,
+    // 存储与诊断路径（启动时由 Rust 填充）
+    data-dir: string,
+    logs-dir: string,
+    diag-status: string,
+    // 新建实例默认内存（MB）
+    default-memory: int,
+    // 默认值状态提示
+    defaults-status: string,
+    // 下载缓存占用，如 "286 MB"
+    cache-size: string,
+}
+
+// 账号页模型：离线用户名输入 + 微软设备码状态（输入框与页面双向绑定）。
+export struct AccountsPageModel {
+    new-username: string,
+    login-status: string,
+    login-code: string,
+    login-url: string,
+}
+
+// 版本页模型：本地整合包导入路径 + 滚动位置（后者仅用于滚动性能基准）。
+export struct DescriptionBlockRow {
+    // h1 / h2 / p / li / code / img
+    kind: string,
+    text: string,
+    // img：图片地址与解码结果（Rust 异步补齐）
+    image-url: string,
+    image: image,
+    has-image: bool,
+}
+
+// 详情页「链接」区的两列条目
+export struct ResourceLinkRow {
+    label: string,
+    url: string,
+}
+
+// 更新日志标签里「更早的版本」一行
+export struct ChangelogRow {
+    id: string,
+    version: string,
+    date: string,
+    // 首行摘要（空 = 该版本没有更新日志）
+    summary: string,
+}
+
+// 页码式分页的展示状态（版本表与下载中心共用同一套规则，Rust 侧 paging 模块生成）
+export struct PagerState {
+    // 当前页（1 起）
+    page: int,
+    pages: int,
+    // 左侧说明：「每页 8 个」/「共 79,910 个结果 · 每页 20 个」
+    hint: string,
+    // 「第 1 / 3,996 页」
+    label: string,
+}
+
+export struct VersionsPageModel {
+    import-path: string,
+    // release / snapshot / all
+    filter: string,
+    // 按版本号搜索
+    query: string,
+    // 预格式化计数提示（如 "共 812 个版本 · 显示 300 个"）
+    count-hint: string,
+    // 当前实例的游戏版本（版本表里高亮该行）
+    installed-mc: string,
+    // 0 版本 / 1 模组 / 2 资源包 / 3 光影
+    category: int,
+    resource-query: string,
+    resource-hint: string,
+    // 下载目标实例名（"安装到 XXX"）
+    target-hint: string,
+    // 排序：relevance / downloads / newest
+    resource-sort: string,
+    // 内容来源：modrinth / curseforge（列表与详情的检索都按它分发）
+    resource-source: string,
+    // 详情页来源（进入时快照，避免切换列表来源把已打开的详情带跑）
+    detail-source: string,
+    // 游戏版本筛选（空 = 全部）
+    resource-mc: string,
+    // 加载器筛选（空 = 全部；存展示名，Rust 转站点 id）
+    resource-loader: string,
+    // 环境筛选（空 = 全部；客户端 / 服务端，仅 Modrinth 支持）
+    resource-env: string,
+    // 下载中心结果页码
+    resource-pager: PagerState,
+    // 版本表页码（资源详情 · 版本标签）
+    version-pager: PagerState,
+    // 详情面板
+    detail-open: bool,
+    detail-title: string,
+    detail-summary: string,
+    detail-url: string,
+    detail-wiki: string,
+    detail-stats: string,
+    detail-categories: string,
+    detail-loading: bool,
+    // 1 模组 / 2 资源包 / 3 光影 / 4 整合包
+    detail-kind: int,
+    // "生存世界 / mods"
+    detail-target: string,
+    // "仅显示 1.20.1 · Fabric"
+    detail-mc-hint: string,
+    // 详情页封面（沿用列表里已加载的同款图标）
+    detail-icon: image,
+    detail-has-icon: bool,
+// ── 详情页三个标签──
+    // 0 描述 / 1 更新日志 / 2 版本
+    detail-tab: int,
+    // 站点名（Modrinth / CurseForge），头部外链按钮与统计行用
+    detail-source-label: string,
+    // 统计行：↓ 2.9 亿 · ★ 3.8 万 · 更新于 1 天前 · Apache-2.0
+    detail-stats-line: string,
+    // 平台行：Fabric · 客户端 / 服务端 · 1.14 – 1.21.9
+    detail-platform: string,
+    // 加载器名（版本标签的过滤行单列展示）
+    detail-loader: string,
+    // 外链按钮文案（在 Modrinth 查看 / 在 CurseForge 查看）
+    detail-site-action: string,
+    // 描述块
+    detail-blocks: [DescriptionBlockRow],
+    // 链接区（最多 4 条，两列排）
+    detail-links: [ResourceLinkRow],
+    // 更新日志：当前选中版本
+    changelog-version: string,
+    changelog-date: string,
+    changelog-kind: string,
+    changelog-lines: [string],
+    changelog-empty: string,
+    // 更早的版本
+    changelog-earlier: [ChangelogRow],
+    // 更新日志下拉的候选（当前版本 + 更早的版本号）
+    changelog-choices: [string],
+    // 版本标签的三个筛选（空 = 全部）
+    version-type: string,
+    // 版本标签的游戏版本筛选（与下载中心列表的 resource-mc 分开，避免互相污染）
+    detail-mc: string,
+    // 下载中心「游戏版本」下拉的候选（首项「全部」）
+    mc-choices: [string],
+    // 下拉候选（首项「全部」）
+    detail-mc-choices: [string],
+    detail-loader-choices: [string],
+    // 版本表底部提示（如 "42 个版本" / "已显示全部"）
+    version-count-hint: string,
+}
+
+export struct InstallLoaderRow {
+    id: string,
+    name: string,
+    // 右侧提示（如「不支持 1.20.1」），空则不显示
+    hint: string,
+    enabled: bool,
+}
+
+// 加载器版本行（安装向导）
+export struct LoaderRow {
+    version: string,
+    // 最新稳定 / 测试版 / 空
+    tag: string,
+}
+
+// 安装向导状态（覆盖层）：新建实例 或 给已有实例安装组件
+export struct InstallState {
+    open: bool,
+    // new / component
+    mode: string,
+    // 弹窗标题（Rust 侧拼好，含实例名）
+    title: string,
+    // 目标实例（component 模式）
+    target: string,
+    // 目标实例显示名（预览文案用）
+    target-name: string,
+    version: string,
+    // 正式版 / 快照，用于副标题
+    kind: string,
+    // vanilla / fabric
+    loader: string,
+    // Fabric 官方是否支持该 MC 版本
+    fabric-available: bool,
+    loader-versions: [LoaderRow],
+    selected: string,
+    status: string,
+    // 正在拉取加载器版本
+    loading: bool,
+    // 上一次拉取失败（展示「重试」）
+    failed: bool,
+    // 将创建的实例名 / 将安装的组件预览
+    preview: string,
+    // ── 安装设置页（current-page 9）专用 ──
+    subject: string,
+    name-draft: string,
+    // 将创建的实例目录（= root/名称）
+    location: string,
+    // 父目录（空 = 设置里的默认实例根）
+    root: string,
+    // 选中图标 id（空 = 跟随加载器；`file:` 前缀 = 自定义图片）
+    icon-kind: string,
+    // 图标来自本地图片文件（UI 用它决定显示图片还是「+」）
+    icon-is-file: bool,
+    icon-choices: [IconChoice],
+    // 摘要卡里的大图标（Rust 按当前选择解析）
+    icon: image,
+    has-icon: bool,
+    // 加载器候选（默认不选 = 原版），NeoForge 等不支持时 enabled=false
+    loaders: [InstallLoaderRow],
+    // 摘要里的下载源，如「自动（官方优先）」
+    source-hint: string,
+}
+
+// 全局确认弹窗状态（覆盖层；与页面模型分开）。
+// 安装弹窗（列表「安装」与详情「安装此版本」共用）
+// `inside` = 路径是否等于实例的默认资源目录；决定按钮是「安装」还是「保存」。
+export struct InstallTargetState {
+    open: bool,
+    title: string,
+    subtitle: string,
+    // 目标实例展示行：`生存服 · 1.20.1 · Fabric`
+    instance: string,
+    path: string,
+    // 提示语（Rust 侧按是否在实例内生成）
+    hint: string,
+    inside: bool,
+}
+
+export struct ConfirmState {
+    open: bool,
+    title: string,
+    message: string,
+    danger: bool,
+    // 可选勾选项（如「同时删除游戏文件」）
+    checkbox-text: string,
+    checked: bool,
+}
+
+// 下载中心的资源条目（Modrinth 检索结果）
+export struct ResourceCard {
+    id: string,
+    name: string,
+    summary: string,
+    // 已格式化的下载量，如 "258.9M"
+    downloads: string,
+    // 目标实例里是否已安装该项目
+    installed: bool,
+    // 预格式化的标签行，如 "Fabric · Quilt · 1.20.1"
+    tags: string,
+    // 卡片图标语义：1 模组 / 2 资源包 / 3 光影 / 4 整合包（远程封面加载失败时的回落）
+    kind: int,
+    // Modrinth 远程封面（96px 内，异步到达）
+    icon: image,
+    has-icon: bool,
+    // 封面原始地址（详情页进入时若列表尚未加载完，用它补拉）
+    cover-url: string,
+}
+
+// 双列网格：Slint 没有 wrap，由 Rust 预先两两配对。
+// 只存下标而不是卡片副本——封面异步到达时改一张卡片即可，无需重建整个网格。
+export struct ResourcePair {
+    left: int,
+    right: int,
+    has-right: bool,
+}
+
+// 详情面板里的版本行
+export struct ResourceVersionRow {
+    id: string,
+    version: string,
+    // "1.20.1 · fabric"
+    info: string,
+    size: string,
+    // 列表首项：详情页标「推荐」
+    recommended: bool,
+    // 游戏版本列（多个时取第一个）
+    game-version: string,
+    // 类型：release / beta / alpha
+    kind: string,
+    // 发布日期（取前 10 位）
+    date: string,
+    // 下载量（中文缩写）
+    downloads: string,
+}
+

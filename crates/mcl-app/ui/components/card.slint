@@ -1,0 +1,18 @@
+import { Tokens } from "../theme.slint";
+
+// 卡片：统一圆角 / 描边 / 极轻阴影；内边距交给内部的布局决定。
+export component Card inherits Rectangle {
+    // flat 用于画布上的次级容器（浅灰底、无阴影）
+    in property <bool> flat: false;
+    in property <length> card-radius: Tokens.radius-lg;
+
+    background: root.flat ? Tokens.surface-muted : Tokens.surface;
+    border-width: 1px;
+    border-color: Tokens.border;
+    border-radius: root.card-radius;
+    drop-shadow-color: root.flat ? transparent : Tokens.shadow-soft;
+    drop-shadow-offset-y: 1px;
+    drop-shadow-blur: 2px;
+
+    @children
+}

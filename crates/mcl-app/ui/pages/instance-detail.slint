@@ -1,0 +1,843 @@
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Tokens } from "../theme.slint";
+import { ModRow, ModUpdateRow, JavaRow, InfoRow, ComponentRow, IconChoice } from "../models.slint";
+import { Button, ButtonSize, ButtonVariant } from "../components/button.slint";
+import { Card } from "../components/card.slint";
+import { Icon } from "../components/icon.slint";
+import { IconButton } from "../components/icon-button.slint";
+import { InstanceAvatar } from "../components/instance-avatar.slint";
+import { Toggle } from "../components/toggle.slint";
+import { Banner, BannerTone } from "../components/banner.slint";
+import { TextField } from "../components/text-field.slint";
+import { NumberField } from "../components/number-field.slint";
+import { LinkText } from "../components/link.slint";
+import { LogView } from "../components/log-view.slint";
+import { SearchField } from "../components/search-field.slint";
+import { Segmented } from "../components/segmented.slint";
+import { Menu, MenuItem } from "../components/menu.slint";
+
+// 五个标签的内容都是全宽卡片；导航在壳层的 200px 左列。
+export component InstanceDetailPage inherits Rectangle {
+    in property <string> instance-name: "";
+    in property <string> instance-info: "";
+    // 游戏版本号（组件标签副行）
+    in property <string> mc-version: "";
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    in property <string> icon-text: "";
+    in-out property <int> active-tab: 0;
+
+    // 概览信息（版本 / 加载器 / 内存 / Java / 目录 / 上次游玩）
+    in property <[InfoRow]> info-rows;
+    // 组件标签（原版 / Fabric / Forge / NeoForge / Quilt）
+    in property <[ComponentRow]> components;
+    // 内置图标选择器（两行，每行 7 个）
+    in property <[IconChoice]> icon-choices-a;
+    in property <[IconChoice]> icon-choices-b;
+    in property <string> icon-kind: "";
+
+    // 改名：内联编辑状态由 DetailPageModel 持有
+    in property <bool> renaming: false;
+    in-out property <string> name-draft: "";
+    // 模组标签的搜索词（只影响展示，筛选在 Rust 侧）
+    in-out property <string> mod-query: "";
+
+    // 模组与日志
+    in property <[ModRow]> mods;
+    in property <string> mods-hint: "";
+    in property <string> mods-update-hint: "";
+    in property <[ModUpdateRow]> mod-updates;
+    in property <[string]> log-lines;
+    in property <string> log-hint: "";
+    in property <string> log-diagnosis: "";
+
+    // 每实例设置
+    in-out property <int> memory-mb: 4096;
+    in-out property <int> game-width: 854;
+    in-out property <int> game-height: 480;
+    in-out property <bool> fullscreen: false;
+    in-out property <string> jvm-args: "";
+    in-out property <string> game-args: "";
+    in-out property <string> java-path: "";
+    // auto / detected / custom
+    in-out property <string> java-mode: "auto";
+    in property <string> java-requirement: "";
+    in-out property <string> icon-path-draft: "";
+    in property <string> settings-status: "";
+    in property <[JavaRow]> java-options;
+
+    callback back();
+    callback launch();
+    callback open-folder();
+    callback refresh();
+    callback start-rename();
+    callback save-rename();
+    callback cancel-rename();
+    callback repair();
+    callback toggle-mod(string);
+    // 模组文件名搜索（筛在 Rust 侧）
+    callback filter-mods(string);
+    callback remove-mod(string);
+    // 在系统文件管理器里定位模组目录
+    callback reveal-mod(string);
+    callback reload-log();
+    callback check-mod-updates();
+    callback open-mod-update(string);
+    callback save-settings();
+    callback reset-settings();
+    callback set-icon(string);
+    callback reset-icon();
+    callback pick-icon(string);
+    callback scan-java();
+    callback use-java(string);
+    callback export-modpack();
+    callback open-component(string);
+    callback remove();
+    // 日志标签的工具：导出诊断包 / 打开日志目录
+    callback export-diagnostics();
+    callback open-log-dir();
+
+    // 行尾菜单的锚点与目标（纯呈现态：PopupWindow 只能有一个，放在组件根部）
+    in-out property <string> menu-target: "";
+    in-out property <length> menu-x: 0;
+    in-out property <length> menu-y: 0;
+
+    background: transparent;
+
+    // 概览的两行三列：直接取 info-rows 的第 0..5 项
+    pure function row-label(index: int) -> string {
+        if (index < root.info-rows.length) { return root.info-rows[index].label; }
+        return "";
+    }
+
+    pure function row-value(index: int) -> string {
+        if (index < root.info-rows.length) { return root.info-rows[index].value; }
+        return "";
+    }
+
+    pure function component-state-color(state: string) -> brush {
+        if (state == "当前") { return Tokens.success; }
+        return Tokens.text-secondary;
+    }
+
+    row-menu := Menu {
+        px: root.menu-x;
+        py: root.menu-y;
+        MenuItem {
+            label: "在文件夹中显示";
+            icon: 17;
+            clicked => { root.reveal-mod(root.menu-target); }
+        }
+        MenuItem {
+            label: "删除模组";
+            icon: 20;
+            danger: true;
+            clicked => { root.remove-mod(root.menu-target); }
+        }
+    }
+
+    VerticalLayout {
+        padding: Tokens.page-padding;
+        spacing: Tokens.space-4;
+
+        // ── 页头：48px 图标 + 名称 + 摘要 + 操作 ──
+        HorizontalLayout {
+            height: 48px;
+            spacing: 14px;
+
+            InstanceAvatar {
+                avatar-size: 48px;
+                source: root.icon;
+                has-image: root.has-icon;
+                fallback: root.icon-text;
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2px;
+
+                if !root.renaming : Text {
+                    text: root.instance-name;
+                    font-size: 20px;
+                    font-weight: 600;
+                    letter-spacing: -0.2px;
+                    color: Tokens.text;
+                    height: 26px;
+                    vertical-alignment: bottom;
+                    overflow: elide;
+                }
+
+                if root.renaming : TextField {
+                    field-height: 30px;
+                    text <=> root.name-draft;
+                    placeholder: "实例名称（≤40 字符）";
+                }
+
+                Text {
+                    text: root.instance-info;
+                    font-size: 11px;
+                    color: Tokens.text-secondary;
+                    height: 16px;
+                    overflow: elide;
+                }
+            }
+
+            if !root.renaming : Button {
+                text: "改名";
+                variant: ButtonVariant.Ghost;
+                size: ButtonSize.Small;
+                clicked => { root.start-rename(); }
+            }
+
+            if root.renaming : Button {
+                text: "保存";
+                variant: ButtonVariant.Primary;
+                size: ButtonSize.Small;
+                clicked => { root.save-rename(); }
+            }
+
+            if root.renaming : Button {
+                text: "取消";
+                variant: ButtonVariant.Ghost;
+                size: ButtonSize.Small;
+                clicked => { root.cancel-rename(); }
+            }
+
+            Button {
+                text: "打开文件夹";
+                variant: ButtonVariant.Ghost;
+                size: ButtonSize.Small;
+                icon: 17;
+                clicked => { root.open-folder(); }
+            }
+
+            Button {
+                text: "启动游戏";
+                variant: ButtonVariant.Primary;
+                size: ButtonSize.Medium;
+                icon: 7;
+                clicked => { root.launch(); }
+            }
+        }
+
+        // ═══ 概览 ═══
+        if root.active-tab == 0 : ScrollView {
+            vertical-stretch: 1;
+            vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+            viewport-width: self.width;
+            viewport-height: overview-body.preferred-height;
+
+            overview-body := VerticalLayout {
+                width: root.width - Tokens.page-padding * 2;
+                spacing: Tokens.space-4;
+
+                // 运行信息：两行三列
+                Card {
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 0;
+
+                        Text { text: "运行信息"; font-size: 13px; font-weight: 600; color: Tokens.text; height: 20px; }
+                        Rectangle { height: 16px; background: transparent; }
+
+                        HorizontalLayout {
+                            spacing: 0;
+                            VerticalLayout { horizontal-stretch: 1; spacing: 4px; Text { text: root.row-label(0); font-size: 11px; color: Tokens.text-secondary; height: 16px; } Text { text: root.row-value(0); font-size: 12px; color: Tokens.text; height: 18px; overflow: elide; } }
+                            VerticalLayout { horizontal-stretch: 1; spacing: 4px; Text { text: root.row-label(1); font-size: 11px; color: Tokens.text-secondary; height: 16px; } Text { text: root.row-value(1); font-size: 12px; color: Tokens.text; height: 18px; overflow: elide; } }
+                            VerticalLayout { horizontal-stretch: 1; spacing: 4px; Text { text: root.row-label(2); font-size: 11px; color: Tokens.text-secondary; height: 16px; } Text { text: root.row-value(2); font-size: 12px; color: Tokens.text; height: 18px; overflow: elide; } }
+                        }
+
+                        Rectangle { height: 20px; background: transparent; }
+
+                        HorizontalLayout {
+                            spacing: 0;
+                            VerticalLayout { horizontal-stretch: 1; spacing: 4px; Text { text: root.row-label(3); font-size: 11px; color: Tokens.text-secondary; height: 16px; } Text { text: root.row-value(3); font-size: 12px; color: Tokens.text; height: 18px; overflow: elide; } }
+                            VerticalLayout { horizontal-stretch: 1; spacing: 4px; Text { text: root.row-label(4); font-size: 11px; color: Tokens.text-secondary; height: 16px; } Text { text: root.row-value(4); font-size: 12px; color: Tokens.text; height: 18px; overflow: elide; } }
+                            VerticalLayout { horizontal-stretch: 1; spacing: 4px; Text { text: root.row-label(5); font-size: 11px; color: Tokens.text-secondary; height: 16px; } Text { text: root.row-value(5); font-size: 12px; color: Tokens.text; height: 18px; overflow: elide; } }
+                        }
+                    }
+                }
+
+                // 维护：列表行
+                Card {
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 0;
+
+                        Text { text: "维护"; font-size: 13px; font-weight: 600; color: Tokens.text; height: 20px; }
+                        Rectangle { height: 8px; background: transparent; }
+
+                        Rectangle {
+                            height: 40px;
+                            background: check-touch.has-hover ? Tokens.surface-hover : transparent;
+                            border-radius: 6px;
+                            HorizontalLayout {
+                                padding-left: 2px;
+                                padding-right: 8px;
+                                spacing: 10px;
+                                Icon { kind: 19; icon-size: 16px; weight: 1.5px; icon-color: Tokens.text-secondary; }
+                                Text { text: "检查更新"; font-size: 12px; color: Tokens.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                Icon { kind: 11; icon-size: 16px; weight: 1.4px; icon-color: #C7CBD1; }
+                            }
+                            check-touch := TouchArea { mouse-cursor: pointer; clicked => { root.check-mod-updates(); } }
+                        }
+
+                        Rectangle { height: 1px; width: parent.width; background: Tokens.divider-row; }
+
+                        Rectangle {
+                            height: 40px;
+                            background: repair-touch.has-hover ? Tokens.surface-hover : transparent;
+                            border-radius: 6px;
+                            HorizontalLayout {
+                                padding-left: 2px;
+                                padding-right: 8px;
+                                spacing: 10px;
+                                Icon { kind: 24; icon-size: 16px; weight: 1.5px; icon-color: Tokens.text-secondary; }
+                                Text { text: "修复实例"; font-size: 12px; color: Tokens.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                Icon { kind: 11; icon-size: 16px; weight: 1.4px; icon-color: #C7CBD1; }
+                            }
+                            repair-touch := TouchArea { mouse-cursor: pointer; clicked => { root.repair(); } }
+                        }
+
+                        Rectangle { height: 1px; width: parent.width; background: Tokens.divider-row; }
+
+                        Rectangle {
+                            height: 40px;
+                            background: export-touch.has-hover ? Tokens.surface-hover : transparent;
+                            border-radius: 6px;
+                            HorizontalLayout {
+                                padding-left: 2px;
+                                padding-right: 8px;
+                                spacing: 10px;
+                                Icon { kind: 2; icon-size: 16px; weight: 1.5px; icon-color: Tokens.text-secondary; }
+                                Text { text: "导出整合包"; font-size: 12px; color: Tokens.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                Icon { kind: 11; icon-size: 16px; weight: 1.4px; icon-color: #C7CBD1; }
+                            }
+                            export-touch := TouchArea { mouse-cursor: pointer; clicked => { root.export-modpack(); } }
+                        }
+
+                        Rectangle { height: 1px; width: parent.width; background: Tokens.divider-row; }
+
+                        Rectangle {
+                            height: 40px;
+                            background: remove-touch.has-hover ? Tokens.danger-soft : transparent;
+                            border-radius: 6px;
+                            HorizontalLayout {
+                                padding-left: 2px;
+                                padding-right: 8px;
+                                Text { text: "删除实例…"; font-size: 12px; color: Tokens.danger; vertical-alignment: center; horizontal-stretch: 1; }
+                            }
+                            remove-touch := TouchArea { mouse-cursor: pointer; clicked => { root.remove(); } }
+                        }
+                    }
+                }
+
+                // 最近日志
+                Card {
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 0;
+
+                        HorizontalLayout {
+                            Text { text: "最近日志"; font-size: 13px; font-weight: 600; color: Tokens.text; height: 20px; vertical-alignment: center; horizontal-stretch: 1; }
+                            LinkText { text: "查看完整日志"; clicked => { root.active-tab = 3; } }
+                        }
+
+                        Rectangle { height: 12px; background: transparent; }
+
+                        // 预览行统一次级色；分级着色交给日志标签的 LogView
+                        for line in root.log-lines : Text {
+                            text: line;
+                            font-size: 10.5px;
+                            color: Tokens.text-secondary;
+                            height: 26px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        if root.log-lines.length == 0 : Text {
+                            text: root.log-hint;
+                            font-size: 11px;
+                            color: Tokens.text-tertiary;
+                            height: 26px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ═══ 组件 ═══
+        if root.active-tab == 1 : ScrollView {
+            vertical-stretch: 1;
+            vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+            viewport-width: self.width;
+            viewport-height: components-body.preferred-height;
+
+            components-body := VerticalLayout {
+                width: root.width - Tokens.page-padding * 2;
+                Card {
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 0;
+
+                        Text { text: "模组加载器"; font-size: 13px; font-weight: 600; color: Tokens.text; height: 20px; }
+                        Text {
+                            text: "切换加载器会重写版本 JSON，不会删除已安装的模组。";
+                            font-size: 11px;
+                            color: Tokens.text-secondary;
+                            height: 17px;
+                            overflow: elide;
+                        }
+
+                        Rectangle { height: 12px; background: transparent; }
+
+                        for row in root.components : VerticalLayout {
+                            spacing: 0;
+
+                            Rectangle {
+                                height: 60px;
+                                border-radius: 7px;
+                                background: comp-touch.has-hover && row.action != "" ? Tokens.surface-hover : transparent;
+
+                                HorizontalLayout {
+                                    padding-right: 8px;
+                                    spacing: 16px;
+
+                                    Rectangle {
+                                        width: 40px;
+                                        height: 40px;
+                                        border-radius: 9px;
+                                        background: row.enabled ? Tokens.primary-soft : Tokens.control-track;
+
+                                        if row.has-icon : Image {
+                                            x: 4px;
+                                            y: 4px;
+                                            width: parent.width - 8px;
+                                            height: parent.height - 8px;
+                                            source: row.icon;
+                                            image-fit: contain;
+                                        }
+                                    }
+
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        spacing: 3px;
+                                        Text { text: row.name; font-size: 13px; color: Tokens.text; height: 18px; vertical-alignment: bottom; }
+                                        Text {
+                                            text: "Minecraft " + root.mc-version + " · 加载器版本 " + (row.version == "" ? "—" : row.version);
+                                            font-size: 11px;
+                                            color: Tokens.text-secondary;
+                                            height: 16px;
+                                            overflow: elide;
+                                        }
+                                    }
+
+                                    Text {
+                                        text: row.state;
+                                        width: 80px;
+                                        font-size: 11px;
+                                        color: root.component-state-color(row.state);
+                                        vertical-alignment: center;
+                                    }
+
+                                    Text {
+                                        text: row.action;
+                                        width: 60px;
+                                        font-size: 11.5px;
+                                        color: row.action == "" ? Tokens.text-tertiary : Tokens.text;
+                                        horizontal-alignment: end;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                comp-touch := TouchArea {
+                                    mouse-cursor: row.action == "" ? default : pointer;
+                                    clicked => {
+                                        if (row.action != "") {
+                                            root.open-component(row.id);
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle { height: 1px; width: parent.width; background: Tokens.divider-row; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ═══ 模组 ═══
+        if root.active-tab == 2 : VerticalLayout {
+            vertical-stretch: 1;
+            spacing: Tokens.space-3;
+
+            HorizontalLayout {
+                height: 28px;
+                spacing: Tokens.space-3;
+
+                SearchField {
+                    compact: true;
+                    field-width: 320px;
+                    text <=> root.mod-query;
+                    placeholder: "搜索模组文件名";
+                    edited(value) => { root.filter-mods(value); }
+                }
+
+                Button {
+                    text: "检查更新";
+                    variant: ButtonVariant.Secondary;
+                    size: ButtonSize.Small;
+                    icon: 19;
+                    min-width: 112px;
+                    clicked => { root.check-mod-updates(); }
+                }
+
+                Button {
+                    text: "打开文件夹";
+                    variant: ButtonVariant.Secondary;
+                    size: ButtonSize.Small;
+                    icon: 17;
+                    min-width: 124px;
+                    clicked => { root.open-folder(); }
+                }
+
+                Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                Text {
+                    text: root.mods-hint;
+                    font-size: 11px;
+                    color: Tokens.text-secondary;
+                    vertical-alignment: center;
+                    horizontal-stretch: 0;
+                    overflow: elide;
+                }
+            }
+
+            if root.mods-update-hint != "" : Banner {
+                text: root.mods-update-hint;
+                tone: BannerTone.Info;
+            }
+
+            Card {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    padding-left: 24px;
+                    padding-right: 24px;
+
+                    HorizontalLayout {
+                        height: 44px;
+                        spacing: 0;
+                        Text { text: "名称"; horizontal-stretch: 1; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; }
+                        Text { text: "版本"; width: 130px; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; }
+                        Text { text: "来源"; width: 120px; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; }
+                        Text { text: "启用"; width: 90px; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; }
+                        Rectangle { width: 40px; background: transparent; }
+                    }
+
+                    Rectangle { height: 1px; width: parent.width; background: Tokens.divider-row; }
+
+                    if root.mods.length == 0 : Text {
+                        text: "还没有模组：从下载中心安装，或把 jar 放进 mods 目录。";
+                        font-size: Tokens.font-label;
+                        color: Tokens.text-tertiary;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        height: 120px;
+                        wrap: word-wrap;
+                    }
+
+                    ListView {
+                        vertical-stretch: 1;
+                        vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+
+                        for item in root.mods : Rectangle {
+                            height: 80px;
+
+                            Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: Tokens.divider-row; }
+
+                            HorizontalLayout {
+                                spacing: 0;
+
+                                HorizontalLayout {
+                                    horizontal-stretch: 1;
+                                    spacing: 12px;
+
+                                    Rectangle {
+                                        width: 36px;
+                                        height: 36px;
+                                        border-radius: 8px;
+                                        background: Tokens.primary-soft;
+
+                                        Icon {
+                                            kind: 21;
+                                            icon-size: 18px;
+                                            weight: 1.5px;
+                                            icon-color: Tokens.primary;
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                        }
+                                    }
+
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        spacing: 2px;
+
+                                        Text { text: item.file-name; font-size: 12.5px; color: Tokens.text; height: 17px; vertical-alignment: bottom; overflow: elide; }
+                                        Text { text: item.size; font-size: 11px; color: Tokens.text-secondary; height: 15px; }
+                                    }
+                                }
+
+                                Text { text: item.version == "" ? "—" : item.version; width: 130px; font-size: 11.5px; color: Tokens.text-secondary; vertical-alignment: center; overflow: elide; }
+                                Text { text: item.source; width: 120px; font-size: 11.5px; color: Tokens.text-secondary; vertical-alignment: center; overflow: elide; }
+
+                                Rectangle {
+                                    width: 90px;
+                                    background: transparent;
+
+                                    Toggle {
+                                        checked: item.enabled;
+                                        toggled => { root.toggle-mod(item.file-name); }
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: 40px;
+                                    background: transparent;
+
+                                    more-anchor := Rectangle {
+                                        width: 28px;
+                                        height: 28px;
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                        background: more-touch.has-hover ? Tokens.surface-hover : transparent;
+                                        border-radius: 6px;
+
+                                        Icon {
+                                            kind: 25;
+                                            icon-size: 16px;
+                                            weight: 2.2px;
+                                            icon-color: Tokens.text-secondary;
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                        }
+
+                                        more-touch := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => {
+                                                root.menu-target = item.file-name;
+                                                root.menu-x = more-anchor.absolute-position.x - 168px + 28px;
+                                                root.menu-y = more-anchor.absolute-position.y + 30px;
+                                                row-menu.show();
+                                            }
+                                        }
+                                    }
+
+                                    // 行尾菜单：PopupWindow 不能放在 for 里，统一用页面级那一个
+                                    // （位置取按钮的窗口坐标 absolute-position）
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ═══ 日志 ═══
+        if root.active-tab == 3 : VerticalLayout {
+            vertical-stretch: 1;
+            spacing: Tokens.space-3;
+
+            if root.log-diagnosis != "" : Banner {
+                text: root.log-diagnosis;
+                tone: BannerTone.Warning;
+            }
+
+            HorizontalLayout {
+                height: 28px;
+                spacing: Tokens.space-3;
+
+                Button { text: "刷新"; variant: ButtonVariant.Secondary; size: ButtonSize.Small; icon: 19; min-width: 84px; clicked => { root.reload-log(); } }
+                Button { text: "导出诊断"; variant: ButtonVariant.Secondary; size: ButtonSize.Small; icon: 5; min-width: 112px; clicked => { root.export-diagnostics(); } }
+                Button { text: "打开日志目录"; variant: ButtonVariant.Secondary; size: ButtonSize.Small; icon: 17; min-width: 132px; clicked => { root.open-log-dir(); } }
+
+                Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                Text { text: root.log-hint; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; horizontal-stretch: 0; overflow: elide; }
+            }
+
+            Rectangle {
+                vertical-stretch: 1;
+                border-radius: Tokens.radius-md;
+                background: Tokens.on-dark-surface;
+                clip: true;
+
+                LogView {
+                    width: root.width - Tokens.page-padding * 2;
+                    height: parent.height;
+                    lines: root.log-lines;
+                }
+            }
+        }
+
+        // ═══ 设置 ═══
+        if root.active-tab == 4 : ScrollView {
+            vertical-stretch: 1;
+            vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+            viewport-width: self.width;
+            viewport-height: settings-body.preferred-height;
+
+            settings-body := VerticalLayout {
+                width: root.width - Tokens.page-padding * 2;
+                spacing: Tokens.space-4;
+
+                // 继承三态图例
+                HorizontalLayout {
+                    height: 18px;
+                    spacing: 8px;
+                    Text { text: "继承全局"; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; horizontal-stretch: 0; }
+                    Text { text: "实例未写过该字段"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; horizontal-stretch: 0; }
+                    Rectangle { width: 16px; background: transparent; }
+                    Text { text: "已覆盖"; font-size: 11px; color: Tokens.primary; vertical-alignment: center; horizontal-stretch: 0; }
+                    Text { text: "实例自己写过"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; horizontal-stretch: 0; }
+                    Rectangle { width: 16px; background: transparent; }
+                    Text { text: "全局已变更"; font-size: 11px; color: Tokens.warning; vertical-alignment: center; horizontal-stretch: 0; }
+                    Text { text: "全局变了但实例仍是旧值"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; horizontal-stretch: 0; }
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                }
+
+                // 内存
+                Card {
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 0;
+                        HorizontalLayout {
+                            spacing: 16px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 4px;
+                                Text { text: "内存"; font-size: 12.5px; font-weight: 600; color: Tokens.text; height: 18px; }
+                                Text { text: "实例独立设置；不填则跟随全局默认。"; font-size: 11px; color: Tokens.text-secondary; height: 16px; overflow: elide; }
+                            }
+                            HorizontalLayout {
+                                spacing: 10px;
+                                NumberField { minimum: 1024; maximum: 32768; value <=> root.memory-mb; }
+                                Text { text: "MB"; width: 26px; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; }
+                            }
+                        }
+                    }
+                }
+
+                // 显示
+                Card {
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 0;
+                        HorizontalLayout {
+                            spacing: 16px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 4px;
+                                Text { text: "显示"; font-size: 12.5px; font-weight: 600; color: Tokens.text; height: 18px; }
+                                Text { text: "窗口尺寸只影响游戏窗口，不影响启动器。"; font-size: 11px; color: Tokens.text-secondary; height: 16px; overflow: elide; }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "宽"; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; }
+                                NumberField { minimum: 640; maximum: 7680; value <=> root.game-width; }
+                                Text { text: "高"; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; }
+                                NumberField { minimum: 480; maximum: 4320; value <=> root.game-height; }
+                            }
+                        }
+
+                        Rectangle { height: 12px; background: transparent; }
+
+                        HorizontalLayout {
+                            Text { text: "全屏启动"; font-size: 12px; color: Tokens.text; vertical-alignment: center; horizontal-stretch: 1; }
+                            Toggle { checked: root.fullscreen; toggled => { root.fullscreen = !root.fullscreen; } }
+                        }
+
+                        Rectangle { height: 12px; background: transparent; }
+
+                        LinkText { text: "恢复继承"; clicked => { root.reset-settings(); } }
+                    }
+                }
+
+                // Java
+                Card {
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 0;
+                        HorizontalLayout {
+                            spacing: 16px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 4px;
+                                Text { text: "Java"; font-size: 12.5px; font-weight: 600; color: Tokens.text; height: 18px; }
+                                Text { text: "自动检测优先匹配版本要求；也可以指定路径。"; font-size: 11px; color: Tokens.text-secondary; height: 16px; overflow: elide; }
+                            }
+                            Segmented {
+                                items: ["自动", "自定义"];
+                                current: root.java-mode == "auto" ? 0 : 1;
+                                select(index) => {
+                                    if (index == 0) {
+                                        root.java-mode = "auto";
+                                        root.java-path = "";
+                                    } else {
+                                        root.java-mode = "custom";
+                                    }
+                                }
+                            }
+                        }
+
+                        if root.java-mode != "auto" : Rectangle {
+                            height: 40px;
+                            background: transparent;
+                            TextField {
+                                y: 8px;
+                                field-height: 28px;
+                                text <=> root.java-path;
+                                placeholder: "java 可执行文件路径";
+                            }
+                        }
+
+                        if root.java-requirement != "" : Text {
+                            text: "当前要求：" + root.java-requirement;
+                            font-size: 11px;
+                            color: Tokens.text-secondary;
+                            height: 16px;
+                            overflow: elide;
+                        }
+                    }
+                }
+
+                // 启动参数
+                Card {
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 0;
+                        Text { text: "启动参数"; font-size: 12.5px; font-weight: 600; color: Tokens.text; height: 18px; }
+                        Rectangle { height: 10px; background: transparent; }
+                        Text { text: "追加 JVM 参数"; font-size: 11px; color: Tokens.text-secondary; height: 16px; }
+                        Rectangle { height: 6px; background: transparent; }
+                        TextField { field-height: 28px; text <=> root.jvm-args; placeholder: "-XX:+UseG1GC"; }
+                        Rectangle { height: 10px; background: transparent; }
+                        Text { text: "追加游戏参数"; font-size: 11px; color: Tokens.text-secondary; height: 16px; }
+                        Rectangle { height: 6px; background: transparent; }
+                        TextField { field-height: 28px; text <=> root.game-args; placeholder: "--width 1280"; }
+                        Rectangle { height: 14px; background: transparent; }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Button { text: "保存设置"; variant: ButtonVariant.Primary; size: ButtonSize.Small; min-width: 96px; clicked => { root.save-settings(); } }
+                            LinkText { text: "恢复继承"; clicked => { root.reset-settings(); } }
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                            if root.settings-status != "" : Text { text: root.settings-status; font-size: 11px; color: Tokens.success; vertical-alignment: center; }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

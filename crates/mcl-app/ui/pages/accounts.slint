@@ -1,0 +1,661 @@
+import { Tokens } from "../theme.slint";
+import { AccountRow } from "../models.slint";
+import { Button, ButtonSize, ButtonVariant } from "../components/button.slint";
+import { Card } from "../components/card.slint";
+import { Icon } from "../components/icon.slint";
+import { Segmented } from "../components/segmented.slint";
+import { TextField } from "../components/text-field.slint";
+
+// 诊断行：左侧标题 + 说明，右侧 64×26 动作
+component DiagRow inherits Rectangle {
+    in property <string> text;
+    in property <string> detail;
+    in property <string> action;
+
+    callback clicked();
+
+    height: 38px;
+    background: transparent;
+
+    Text {
+        x: 0;
+        y: 4px;
+        width: 120px;
+        height: 20px;
+        text: root.text;
+        font-size: 12px;
+        color: Tokens.text;
+        vertical-alignment: center;
+        horizontal-alignment: left;
+        overflow: elide;
+    }
+
+    Text {
+        x: 126px;
+        y: 4px;
+        width: parent.width - 220px;
+        height: 20px;
+        text: root.detail;
+        font-size: 11px;
+        color: Tokens.text-secondary;
+        vertical-alignment: center;
+        horizontal-alignment: left;
+        overflow: elide;
+    }
+
+    Rectangle {
+        x: parent.width - 64px;
+        y: 6px;
+        width: 64px;
+        height: 26px;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Tokens.border-strong;
+        background: row-touch.has-hover ? Tokens.surface-hover : Tokens.surface;
+
+        Text {
+            width: 100%;
+            height: 100%;
+            text: root.action;
+            font-size: 11px;
+            color: Tokens.text;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+
+    row-touch := TouchArea {
+        x: parent.width - 64px;
+        y: 6px;
+        width: 64px;
+        height: 26px;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// 账号与支持：860 居中列 = 已保存的账号 / 账号安全 / 诊断与支持；添加账号走 480×400 弹窗。
+export component AccountsPage inherits Rectangle {
+    width: 100%;
+    height: 100%;
+
+    in property <[AccountRow]> accounts;
+    in-out property <string> new-username: "";
+    in-out property <string> login-status: "";
+    in-out property <string> login-code: "";
+    in-out property <string> login-url: "";
+    in property <string> last-incident: "";
+    in property <string> current-hint: "";
+    in property <string> diag-status: "";
+
+    callback use-account(string);
+    callback remove-account(string);
+    callback add-offline-account(string);
+    callback microsoft-login();
+    callback open-login-url();
+    callback copy-login-code();
+    callback export-diagnostics();
+    callback open-log-dir();
+
+    // 添加账号弹窗：0 微软账号 / 1 离线账号
+    property <bool> add-open: false;
+    property <int> add-tab: 0;
+    property <int> accounts-at-open: 0;
+
+    background: transparent;
+
+    pure function incident-text() -> string {
+        if (root.diag-status != "") { return root.diag-status; }
+        if (root.last-incident != "") { return "最近事件：" + root.last-incident; }
+        return "暂无异常退出记录";
+    }
+
+    // 登录成功或新增离线账号后自动收起弹窗
+    changed accounts => {
+        if (root.add-open && root.accounts.length != root.accounts-at-open) {
+            root.add-open = false;
+        }
+    }
+
+    VerticalLayout {
+        x: (root.width - 860px) / 2;
+        width: 860px;
+        padding-top: 28px;
+        padding-bottom: 28px;
+        spacing: 20px;
+
+        // ── 已保存的账号 ──
+        Card {
+            height: 300px;
+
+            VerticalLayout {
+                padding-left: 24px;
+                padding-right: 24px;
+                padding-top: 18px;
+                spacing: 0px;
+
+                HorizontalLayout {
+                    height: 28px;
+                    spacing: 8px;
+                    cross-axis-alignment: center;
+
+                    Text {
+                        text: "已保存的账号";
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Tokens.text;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: root.accounts.length + " 个";
+                        font-size: 11px;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                    Button {
+                        text: "添加账号";
+                        variant: ButtonVariant.Secondary;
+                        size: ButtonSize.Small;
+                        min-width: 112px;
+                        clicked => {
+                            root.accounts-at-open = root.accounts.length;
+                            root.add-tab = 0;
+                            root.add-open = true;
+                            if (root.login-code == "") {
+                                root.microsoft-login();
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { height: 22px; background: transparent; }
+
+                for account in root.accounts : Rectangle {
+                    height: 84px;
+                    background: transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 20px;
+                        width: 44px;
+                        height: 44px;
+                        border-radius: 10px;
+                        clip: true;
+                        background: Tokens.surface-muted;
+
+                        if account.has-avatar : Image {
+                            width: 100%;
+                            height: 100%;
+                            source: account.avatar;
+                            image-fit: cover;
+                            image-rendering: pixelated;
+                        }
+
+                        if !account.has-avatar : Text {
+                            text: account.initial;
+                            font-size: 17px;
+                            font-weight: 600;
+                            color: Tokens.text-secondary;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+
+                    Text {
+                        x: 64px;
+                        y: 22px;
+                        width: parent.width - 260px;
+                        height: 20px;
+                        text: account.name;
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: Tokens.text;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        x: 64px;
+                        y: 44px;
+                        width: parent.width - 260px;
+                        height: 16px;
+                        text: account.info == "" ? account.kind + "账号" : account.kind + "账号 · " + account.info;
+                        font-size: 11px;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                    }
+
+                    if account.is-current : Rectangle {
+                        x: parent.width - 96px;
+                        y: 32px;
+                        width: 44px;
+                        height: 20px;
+                        border-radius: 10px;
+                        background: Tokens.primary-soft;
+
+                        Text {
+                            text: "当前";
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: Tokens.primary;
+                            width: 100%;
+                            height: 100%;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    if !account.is-current : Button {
+                        x: parent.width - 128px;
+                        y: 28px;
+                        width: 72px;
+                        height: 28px;
+                        control-height: 28px;
+                        text: "使用";
+                        variant: ButtonVariant.Secondary;
+                        size: ButtonSize.Small;
+                        clicked => { root.use-account(account.id); }
+                    }
+
+                    // 移除：低对比图标，保留能力但不抢视觉
+                    if !account.is-current : Rectangle {
+                        x: parent.width - 30px;
+                        y: 32px;
+                        width: 20px;
+                        height: 20px;
+                        background: transparent;
+
+                        Icon {
+                            kind: 20;
+                            icon-size: 15px;
+                            weight: 1.5px;
+                            icon-color: Tokens.text-tertiary;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        TouchArea {
+                            width: 20px;
+                            height: 20px;
+                            mouse-cursor: pointer;
+                            clicked => { root.remove-account(account.id); }
+                        }
+                    }
+                }
+
+                Rectangle { height: 16px; background: transparent; }
+
+                Text {
+                    text: "令牌只存在系统钥匙串，不写入 accounts.json。";
+                    font-size: 11px;
+                    color: Tokens.text-secondary;
+                    height: 16px;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                }
+            }
+        }
+
+        // ── 账号安全 ──
+        Card {
+            height: 180px;
+
+            VerticalLayout {
+                padding-left: 24px;
+                padding-right: 24px;
+                padding-top: 22px;
+                spacing: 0px;
+
+                Text {
+                    text: "账号安全";
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: Tokens.text;
+                    height: 24px;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                }
+
+                Rectangle { height: 16px; background: transparent; }
+
+                HorizontalLayout {
+                    height: 38px;
+                    spacing: 0px;
+                    cross-axis-alignment: center;
+
+                    Text {
+                        width: 96px;
+                        text: "令牌存储";
+                        font-size: 11.5px;
+                        color: Tokens.text;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "系统钥匙串（libsecret / Keychain / Credential Manager）";
+                        font-size: 11.5px;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                    }
+                }
+
+                HorizontalLayout {
+                    height: 38px;
+                    spacing: 0px;
+                    cross-axis-alignment: center;
+
+                    Text {
+                        width: 96px;
+                        text: "撤销授权";
+                        font-size: 11.5px;
+                        color: Tokens.text;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "account.live.com/consent → OMCLauncher";
+                        font-size: 11.5px;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                    }
+                }
+
+                HorizontalLayout {
+                    height: 38px;
+                    spacing: 0px;
+                    cross-axis-alignment: center;
+
+                    Text {
+                        width: 96px;
+                        text: "切换账号";
+                        font-size: 11.5px;
+                        color: Tokens.text;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "设备码页面没有账号选择器：用隐私窗口或先退出登录";
+                        font-size: 11.5px;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+
+        // ── 诊断与支持 ──
+        Card {
+            height: 180px;
+
+            VerticalLayout {
+                padding-left: 24px;
+                padding-right: 24px;
+                padding-top: 22px;
+                spacing: 0px;
+
+                Text {
+                    text: "诊断与支持";
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: Tokens.text;
+                    height: 24px;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                }
+
+                Rectangle { height: 16px; background: transparent; }
+
+                DiagRow {
+                    text: "导出诊断包";
+                    detail: "包含日志、设置与系统信息；不包含令牌。";
+                    action: "导出";
+                    clicked => { root.export-diagnostics(); }
+                }
+
+                DiagRow {
+                    text: "打开日志目录";
+                    detail: "查看启动器与游戏的完整日志。";
+                    action: "打开";
+                    clicked => { root.open-log-dir(); }
+                }
+
+                DiagRow {
+                    text: "上次异常退出";
+                    detail: root.incident-text();
+                    action: "查看";
+                    clicked => { root.open-log-dir(); }
+                }
+            }
+        }
+    }
+
+    // ── 添加账号（480×400）──
+    if root.add-open : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Tokens.overlay;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.add-open = false; }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 480px;
+            height: 400px;
+            border-radius: Tokens.radius-lg;
+            background: Tokens.surface;
+            border-width: 1px;
+            border-color: Tokens.border;
+            drop-shadow-color: Tokens.shadow-raise;
+            drop-shadow-blur: 24px;
+            drop-shadow-offset-y: 8px;
+
+            TouchArea { width: 100%; height: 100%; }
+
+            VerticalLayout {
+                padding: 24px;
+                spacing: 0px;
+
+                Text {
+                    text: "添加账号";
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: Tokens.text;
+                    height: 22px;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                }
+
+                Rectangle { height: 6px; background: transparent; }
+
+                Text {
+                    text: "微软账号用于正版验证；离线账号仅本地使用。";
+                    font-size: 11px;
+                    color: Tokens.text-secondary;
+                    height: 16px;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                }
+
+                Rectangle { height: 18px; background: transparent; }
+
+                HorizontalLayout {
+                    height: 28px;
+                    alignment: start;
+
+                    Segmented {
+                        width: 150px;
+                        items: ["微软账号", "离线账号"];
+                        current: root.add-tab;
+                        select(index) => {
+                            root.add-tab = index;
+                            if (index == 0 && root.login-code == "") {
+                                root.microsoft-login();
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { height: 18px; background: transparent; }
+
+                if root.add-tab == 0 : VerticalLayout {
+                    spacing: 0px;
+
+                    Text {
+                        text: "在浏览器打开 microsoft.com/link，输入下面的代码。";
+                        font-size: 11.5px;
+                        color: Tokens.text-secondary;
+                        height: 20px;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+
+                    Rectangle { height: 12px; background: transparent; }
+
+                    Rectangle {
+                        width: 432px;
+                        height: 52px;
+                        border-radius: 8px;
+                        background: Tokens.control-track;
+
+                        Text {
+                            x: 16px;
+                            width: 300px;
+                            height: parent.height;
+                            text: root.login-code == "" ? "正在获取设备码…" : root.login-code;
+                            font-size: root.login-code == "" ? 12.5px : 20px;
+                            font-weight: 500;
+                            color: root.login-code == "" ? Tokens.text-secondary : Tokens.text;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            overflow: elide;
+                        }
+
+                        if root.login-code != "" : TouchArea {
+                            x: 364px;
+                            y: 12px;
+                            width: 56px;
+                            height: 28px;
+                            mouse-cursor: pointer;
+                            clicked => { root.copy-login-code(); }
+
+                            Text {
+                                width: 100%;
+                                height: 100%;
+                                text: "复制";
+                                font-size: 11.5px;
+                                color: Tokens.primary;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 12px; background: transparent; }
+
+                    Button {
+                        text: "打开浏览器";
+                        variant: ButtonVariant.Primary;
+                        width: 432px;
+                        control-height: 32px;
+                        enabled: root.login-code != "";
+                        clicked => { root.open-login-url(); }
+                    }
+
+                    Rectangle { height: 10px; background: transparent; }
+
+                    Text {
+                        text: root.login-status != "" ? root.login-status : "等待授权… 代码 15 分钟内有效";
+                        font-size: 11px;
+                        color: root.login-status != "" ? Tokens.warning : Tokens.text-tertiary;
+                        height: 16px;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                    }
+                }
+
+                if root.add-tab == 1 : VerticalLayout {
+                    spacing: 0px;
+
+                    Text {
+                        text: "离线账号不需要登录，仅用于本地游戏。";
+                        font-size: 11.5px;
+                        color: Tokens.text-secondary;
+                        height: 20px;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+
+                    Rectangle { height: 12px; background: transparent; }
+
+                    TextField {
+                        width: 432px;
+                        field-height: 36px;
+                        text <=> root.new-username;
+                        placeholder: "离线用户名（如 Steve）";
+                        accepted(value) => { root.add-offline-account(value); }
+                    }
+
+                    Rectangle { height: 12px; background: transparent; }
+
+                    Button {
+                        text: "创建并设为当前";
+                        variant: ButtonVariant.Primary;
+                        width: 432px;
+                        control-height: 32px;
+                        clicked => { root.add-offline-account(root.new-username); }
+                    }
+                }
+
+                Rectangle { vertical-stretch: 1; background: transparent; }
+
+                HorizontalLayout {
+                    height: 28px;
+                    spacing: 12px;
+                    alignment: end;
+                    cross-axis-alignment: center;
+
+                    Text {
+                        text: "授权在浏览器完成后自动继续";
+                        font-size: 11px;
+                        color: Tokens.text-tertiary;
+                        vertical-alignment: center;
+                    }
+
+                    Button {
+                        text: "取消";
+                        variant: ButtonVariant.Secondary;
+                        size: ButtonSize.Small;
+                        min-width: 72px;
+                        clicked => { root.add-open = false; }
+                    }
+                }
+            }
+        }
+    }
+}

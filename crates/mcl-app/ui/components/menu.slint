@@ -1,0 +1,88 @@
+import { Tokens } from "../theme.slint";
+import { Icon } from "./icon.slint";
+
+// 菜单项：30px 行，可带图标；danger 用于删除类动作。
+export component MenuItem inherits Rectangle {
+    in property <string> label;
+    in property <int> icon: 0;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 30px;
+    border-radius: 6px;
+    background: item-touch.has-hover && root.enabled ? Tokens.surface-hover : transparent;
+    opacity: root.enabled ? 1.0 : 0.5;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 8px;
+
+        if root.icon > 0 : Icon {
+            kind: root.icon;
+            icon-size: 15px;
+            weight: 1.5px;
+            icon-color: root.danger ? Tokens.danger : Tokens.text-secondary;
+        }
+
+        Text {
+            text: root.label;
+            font-size: 12.5px;
+            color: root.danger ? Tokens.danger : Tokens.text;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+    }
+
+    item-touch := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+    }
+}
+
+// PopupWindow 内部属性不对外暴露，位置由调用方在 show 前写入。
+export component Menu inherits PopupWindow {
+    in property <length> px;
+    in property <length> py;
+    in property <length> menu-width: 168px;
+    // 纯文本条目（下拉选择用）；与 @children 二选一
+    in property <[string]> entries: [];
+
+    callback entry-selected(string);
+
+    x: root.px;
+    y: root.py;
+    width: root.menu-width;
+    height: body.preferred-height + 8px;
+    close-policy: close-on-click;
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: Tokens.radius-md;
+        background: Tokens.surface;
+        border-width: 1px;
+        border-color: Tokens.border-strong;
+        drop-shadow-color: Tokens.shadow-raise;
+        drop-shadow-blur: 8px;
+        drop-shadow-offset-y: 2px;
+
+        body := VerticalLayout {
+            padding: 4px;
+            spacing: 1px;
+
+            for entry in root.entries : MenuItem {
+                label: entry;
+                clicked => { root.entry-selected(entry); }
+            }
+
+            @children
+        }
+    }
+}

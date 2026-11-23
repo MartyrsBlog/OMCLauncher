@@ -1,0 +1,110 @@
+import { Tokens } from "../theme.slint";
+import { PagerState } from "../models.slint";
+
+component PagerLink inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+
+    callback clicked();
+
+    width: link-text.preferred-width;
+    height: 20px;
+    horizontal-stretch: 0;
+    background: transparent;
+
+    link-text := Text {
+        width: parent.width;
+        height: parent.height;
+        text: root.label;
+        font-size: 11.5px;
+        color: root.enabled ? Tokens.primary : #B4B2A9;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+    }
+}
+
+// 页码式分页（资源详情版本表 / 下载中心共用一份实现）
+// 页码算术与文案由 Rust 侧 `mcl_app_model::paging` 统一生成，UI 只负责摆按钮。
+export component Pager inherits Rectangle {
+    in property <PagerState> state;
+    // 顶部分隔线左右内缩（版本表 24px；下载中心整宽传 0px）
+    in property <length> divider-inset: 24px;
+    in property <length> padding-x: 24px;
+
+    callback goto(int);
+
+    height: 48px;
+    horizontal-stretch: 0;
+    background: transparent;
+
+    Rectangle {
+        y: 0;
+        x: root.divider-inset;
+        width: parent.width - root.divider-inset * 2;
+        height: 1px;
+        background: Tokens.divider-row;
+    }
+
+    HorizontalLayout {
+        x: root.padding-x;
+        width: parent.width - root.padding-x * 2;
+        height: parent.height;
+        spacing: 16px;
+        alignment: start;
+        cross-axis-alignment: center;
+
+        // 左侧说明吃掉剩余宽度，把页码推到右侧
+        Text {
+            text: root.state.hint;
+            font-size: 11px;
+            color: Tokens.text-cell;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+
+        PagerLink {
+            label: "首页";
+            enabled: root.state.page > 1;
+            clicked => { root.goto(1); }
+        }
+
+        PagerLink {
+            label: "上一页";
+            enabled: root.state.page > 1;
+            clicked => { root.goto(root.state.page - 1); }
+        }
+
+        Text {
+            text: root.state.label;
+            font-size: 11.5px;
+            color: Tokens.text-secondary;
+            vertical-alignment: center;
+            horizontal-stretch: 0;
+        }
+
+        PagerLink {
+            label: "下一页";
+            enabled: root.state.page < root.state.pages;
+            clicked => { root.goto(root.state.page + 1); }
+        }
+
+        PagerLink {
+            label: "末页";
+            enabled: root.state.page < root.state.pages;
+            clicked => { root.goto(root.state.pages); }
+        }
+    }
+}
+

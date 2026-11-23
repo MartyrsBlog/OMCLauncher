@@ -1,0 +1,1423 @@
+import { Tokens } from "./theme.slint";
+import { NavigationRail } from "./shell/navigation-rail.slint";
+import { ContextBar } from "./shell/context-bar.slint";
+import { DownloadRail, SettingsRail, WorkbenchRail } from "./shell/page-rail.slint";
+import { InstancesRail } from "./shell/instances-rail.slint";
+import { InstallTargetDialog } from "./components/install-target-dialog.slint";
+import { InstanceRow, InstancesPageModel, VersionRow, TaskRow, AccountRow, DetailPageModel, SettingsPageModel, AccountsPageModel, VersionsPageModel, ConfirmState, InstallState, CrashState, LoaderIcons, ResourceCard, ResourcePair, ResourceVersionRow, TasksPageModel, DirectoryItem, ToolbarAction, DescriptionBlockRow, ResourceLinkRow, ChangelogRow, InstallTargetState } from "./models.slint";
+import { Button, ButtonSize, ButtonVariant } from "./components/button.slint";
+import { IconButton } from "./components/icon-button.slint";
+import { Toggle } from "./components/toggle.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
+import { HomePage } from "./pages/home.slint";
+import { InstancesPage } from "./pages/instances.slint";
+import { GameDirectoriesPage } from "./pages/game-directories.slint";
+import { InstanceDetailPage } from "./pages/instance-detail.slint";
+import { VersionsPage } from "./pages/versions.slint";
+import { ResourcesPage } from "./pages/resources.slint";
+import { ResourceDetailPage } from "./pages/resource-detail.slint";
+import { TasksPage } from "./pages/tasks.slint";
+import { InstallPage } from "./pages/install.slint";
+import { SettingsPage } from "./pages/settings.slint";
+import { AccountsPage } from "./pages/accounts.slint";
+
+// 加载器选择卡片（安装向导）：固定 170px 宽，三列正好铺满 528px 内容区。
+// 图标在左、单选点在右——这样占位卡（无单选点）的文字仍然与其它卡对齐。
+component LoaderTile inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <image> icon;
+    in property <bool> selected: false;
+    in property <bool> available: true;
+    // 占位说明卡（无单选点、不可点）
+    in property <bool> info-only: false;
+    callback clicked;
+
+    width: 170px;
+    height: 58px;
+    border-radius: Tokens.radius-sm;
+    background: root.selected ? Tokens.primary-soft : Tokens.canvas;
+    border-width: 1px;
+    border-color: root.selected ? Tokens.primary : Tokens.border.with-alpha(0.30);
+    opacity: root.available || root.info-only ? 1.0 : 0.55;
+
+    HorizontalLayout {
+        padding-left: Tokens.space-2;
+        padding-right: Tokens.space-2;
+        spacing: 8px;
+
+        Image {
+            width: 28px;
+            height: 28px;
+            source: root.icon;
+            image-fit: contain;
+            vertical-alignment: center;
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 1px;
+            horizontal-stretch: 1;
+
+            Text {
+                text: root.title;
+                font-size: 12px;
+                font-weight: 700;
+                color: Tokens.text;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.subtitle;
+                font-size: 11px;
+                color: Tokens.text-secondary;
+                overflow: elide;
+            }
+        }
+
+        // 选中标记（固定宽度，信息卡留同宽空位以保持文字列一致）
+        Rectangle {
+            width: 14px;
+            height: 14px;
+            border-radius: 7px;
+            border-width: 2px;
+            border-color: root.selected ? Tokens.primary : Tokens.text-secondary.with-alpha(0.45);
+            background: root.selected ? Tokens.primary : transparent;
+            visible: !root.info-only;
+
+            if root.selected : Rectangle {
+                width: 4px;
+                height: 4px;
+                border-radius: 2px;
+                background: white;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+    }
+
+    TouchArea {
+        clicked => {
+            if (root.available && !root.info-only) {
+                root.clicked();
+            }
+        }
+    }
+}
+
+// 主窗口：左侧导航 + 主内容区
+// 窗口最小尺寸约束 1024×680 在 M1 接入窗口层（Slint Window 不直接暴露最小尺寸），
+// 原型默认 1180×720。
+export component AppWindow inherits Window {
+    title: "OMCLauncher 0.1.0";
+    // 设计基准 1440×900；内容区随窗口伸展（契约页：内容区随窗口伸展）
+    width: 1440px;
+    height: 900px;
+    background: Tokens.canvas;
+
+    // 账号卡片：M0 用占位头像（AvatarPlaceholder），M3 替换为皮肤 2D 渲染
+    in property <string> account-name: "未登录";
+    // 实例库：筛选后的列表 + 页面状态（搜索 / 加载器筛选 / 计数）
+    in-out property <[InstanceRow]> instance-view: [];
+    in-out property <InstancesPageModel> instances-page: {
+        query: "",
+        filter: "all",
+        count-all: 0,
+        count-hint: "",
+        empty-hint: "",
+    };
+    // 侧栏账号卡片的副标题，如 "微软账号 · 已登录"
+    in property <string> account-subtitle: "";
+    // 头像占位字符（账号名首字）
+    in property <string> account-initial: "?";
+    // 当前账号的皮肤头像（64×64）；ready=false 时侧栏回落首字母
+    in property <image> account-avatar;
+    in property <bool> account-avatar-ready: false;
+    // 首页问候语中的名字（未登录时为空，首页只显示「欢迎回来」）
+    in property <string> greeting-name: "";
+    // 顶栏右侧的当前实例胶囊，如 "生存世界 · 1.20.1"
+    in property <string> current-instance-label: "";
+    in property <string> current-instance-name: "";
+    // 首页「启动环境」卡片的预格式化内存提示
+    in property <string> memory-hint: "";
+    // 首页 Hero 背景（编译期嵌入，运行时解码）
+    in property <image> hero-image;
+    in property <bool> has-hero: false;
+    // 首次启动：Java 状态行（Rust 探测一次后写入）
+    in property <string> java-hint: "";
+    in property <bool> java-ready: false;
+    // 首页启动环境四行 + 更新横幅
+    in property <string> home-account-line: "";
+    in property <string> home-java-line: "";
+    in property <string> home-memory-line: "";
+    in property <string> home-source-line: "";
+    in property <string> home-update-banner: "";
+    in property <[InstanceRow]> instances;
+    in property <[VersionRow]> versions;
+    in property <[TaskRow]> tasks;
+    in property <[AccountRow]> accounts;
+    in property <string> toast: "";
+    // 加载器图标（内置 64×64 素材，启动时由 Rust 填充一次；
+    // 结构体默认值即空图，未填充时瓦片只显示文字）
+    in property <LoaderIcons> loader-icons;
+
+    in-out property <int> current-page: 0;
+    // 设置的来源页（只服务设置，不再充当全局返回栈）
+    in-out property <int> settings-return: 0;
+    // 安装弹窗（列表「安装」/ 详情「安装此版本」共用）
+    in-out property <InstallTargetState> install-target: {
+        open: false,
+        title: "",
+        subtitle: "",
+        instance: "",
+        path: "",
+        hint: "",
+        inside: true,
+    };
+    // 游戏目录管理页（current-page == 8）
+    in property <[DirectoryItem]> directories;
+    in property <string> directories-hint: "";
+    in property <int> directories-hint-tone: 0;
+    in-out property <bool> show-directory-add: false;
+    in-out property <string> new-directory-path: "";
+    // 账号页模型（页面内输入框双向绑定；R6）
+    in-out property <AccountsPageModel> accounts-page: {
+        new-username: "",
+        login-status: "",
+        login-code: "",
+        login-url: "",
+    };
+    // 设置页模型（Rust 侧读写；current-page == 4 时展示）
+    in-out property <SettingsPageModel> settings: {
+        download-concurrency: 64,
+        gc-status: "",
+        gc-armed: false,
+        proxy-url: "",
+        download-source: "auto",
+        data-dir: "",
+        logs-dir: "",
+        diag-status: "",
+        default-memory: 4096,
+        defaults-status: "",
+        cache-size: "",
+    };
+    // 版本页模型（导入路径与页面双向绑定）
+    in-out property <VersionsPageModel> versions-page: {
+        import-path: "",
+        filter: "release",
+        query: "",
+        count-hint: "",
+        category: 0,
+        resource-query: "",
+        resource-hint: "",
+        target-hint: "",
+        resource-sort: "relevance",
+        resource-source: "modrinth",
+        detail-source: "",
+        resource-mc: "",
+        resource-loader: "",
+        resource-env: "",
+        resource-pager: { page: 1, pages: 1, hint: "", label: "" },
+        version-pager: { page: 1, pages: 1, hint: "", label: "" },
+        detail-open: false,
+        detail-title: "",
+        detail-summary: "",
+        detail-url: "",
+        detail-wiki: "",
+        detail-stats: "",
+        detail-categories: "",
+        detail-loading: false,
+        detail-kind: 1,
+        detail-target: "",
+        detail-mc-hint: "",
+        detail-has-icon: false,
+        detail-tab: 0,
+        detail-source-label: "",
+        detail-stats-line: "",
+        detail-platform: "",
+        detail-loader: "",
+        detail-site-action: "",
+        detail-blocks: [],
+        detail-links: [],
+        changelog-version: "",
+        changelog-date: "",
+        changelog-kind: "",
+        changelog-lines: [],
+        changelog-empty: "",
+        changelog-earlier: [],
+        changelog-choices: [],
+        version-type: "all",
+        detail-mc: "",
+        mc-choices: [],
+        detail-mc-choices: [],
+        detail-loader-choices: [],
+        version-count-hint: "",
+    };
+    // 详情面板的版本列表
+    in-out property <[ResourceVersionRow]> res-versions: [];
+    // 下载任务页统计
+    in-out property <TasksPageModel> tasks-page: {
+        running: 0,
+        paused: 0,
+        done: 0,
+        failed: 0,
+        volume: "0 MB",
+        hint: "",
+        source-hint: "",
+    };
+    // 下载中心检索结果（扁平：用于状态与计数）
+    in-out property <[ResourceCard]> resources: [];
+    // 双列网格：Rust 预先两两配对
+    in-out property <[ResourcePair]> resource-grid: [];
+    // 实例详情页模型（Rust 侧在打开详情时一次性填充；current-page == 6 时展示）
+    in-out property <DetailPageModel> detail: {
+        id: "",
+        name: "",
+        info: "",
+        rail-info: "",
+        has-icon: false,
+        icon-text: "",
+        tab: 0,
+        info-rows: [],
+        components: [],
+        mods: [],
+        mods-hint: "",
+        log-lines: [],
+        log-hint: "",
+    };
+
+    // 全局确认弹窗（覆盖层；与四个页面模型分开，属于应用级状态）
+    in-out property <ConfirmState> confirm: {
+        open: false,
+        title: "",
+        message: "",
+        danger: false,
+    };
+
+    // 游戏异常退出横幅（由进程退出监听写入）
+    in-out property <string> crash-banner: "";
+    // 安装向导 / 安装设置页共用状态（默认全空，打开时由 Rust 填充）
+    in-out property <InstallState> install;
+
+    // 崩溃诊断弹窗（游戏非 0 退出时自动打开）
+    in-out property <CrashState> crash: {
+        open: false,
+        title: "",
+        detail: "",
+        instance-id: "",
+    };
+
+    callback launch-instance(string);
+    callback open-login();
+    callback download-java();
+    callback pick-import-pack();
+    callback open-update();
+    callback toggle-task(int);
+    callback save-download-concurrency(int);
+    callback save-default-memory(int);
+    callback apply-defaults-all();
+    callback save-proxy(string);
+    callback save-download-source(string);
+    callback set-category(int);
+    callback set-resource-source(string);
+    // 检索（text, category, sort, mc, source, loader, env, page）
+    callback search-resources(string, int, string, string, string, string, string, int);
+    callback install-resource(string, int);
+    callback goto-resource-page(int);
+    callback open-resource(string, int);
+    callback check-updates();
+    callback resource-back();
+    // 资源详情三标签与版本筛选
+    callback set-detail-tab(int);
+    callback install-recommended();
+    callback select-changelog(string);
+    callback set-version-type(string);
+    callback set-detail-mc(string);
+    callback set-detail-loader(string);
+    callback goto-version-page(int);
+    callback open-external(string);
+    callback install-version(string);
+    callback open-data-dir();
+    callback open-log-dir();
+    callback export-diagnostics();
+    callback remove-instance(string);
+    callback set-version-filter(string);
+    callback set-version-query(string);
+    callback open-install(string);
+    callback close-install();
+    callback select-loader(string);
+    callback select-loader-version(string);
+    callback confirm-install();
+    callback clear-finished-tasks();
+    callback pause-all-tasks();
+    callback use-account(string);
+    callback remove-account(string);
+    callback add-offline-account(string);
+    callback microsoft-login();
+    callback open-login-url();
+    callback copy-login-code();
+    // 实例详情页
+    callback open-instance(string);
+    callback detail-back();
+    callback detail-launch();
+    callback detail-open-folder();
+    callback detail-refresh();
+    callback detail-repair();
+    callback run-shared-gc();
+    // 整合包
+    callback import-pack(string);
+    // 安装设置页（路由 9）
+    callback set-install-name(string);
+    callback pick-install-icon(string);
+    callback pick-install-icon-file();
+    callback change-install-location();
+    callback cancel-install();
+    callback toggle-mod(string);
+    callback filter-mods(string);
+    callback remove-mod(string);
+    callback detail-reload-log();
+    // 实例管理：改名（详情页内联编辑）与实例库重扫
+    callback detail-start-rename();
+    callback detail-save-rename();
+    callback detail-cancel-rename();
+    // 每实例游戏设置
+    callback game-settings-save();
+    callback game-settings-reset();
+    callback set-instance-icon(string);
+    callback reset-instance-icon();
+    // 选择内置图标（空 = 跟随加载器）
+    callback pick-instance-icon(string);
+    callback scan-java();
+    callback use-java(string);
+    callback export-modpack();
+    callback check-mod-updates();
+    callback open-mod-update(string);
+    callback refresh-instances();
+    callback set-instance-query(string);
+    callback set-instance-filter(string);
+    callback set-instance-view(string);
+        callback scan-instances();
+    callback reveal-instance(string);
+    callback toggle-select(string);
+    callback start-select(string);
+    callback cancel-select();
+    callback launch-selected();
+    callback export-selected();
+    callback remove-selected();
+    callback set-instance-directory(string);
+    // 安装弹窗
+    callback browse-install-target();
+    callback confirm-install-target();
+    callback cancel-install-target();
+    callback clear-filters();
+    // 游戏目录管理页（03b）
+    callback open-game-directories();
+    callback set-game-directory-default(string);
+    callback remove-game-directory(string);
+    callback open-game-directory(string);
+    callback begin-add-game-directory();
+    callback confirm-add-game-directory();
+    callback cancel-add-game-directory();
+    // 实例组件（给已有实例装加载器）
+    callback open-component(string);
+    // 崩溃诊断弹窗
+    callback close-crash();
+    callback open-crash-log();
+    callback export-crash-report();
+    // 首页空态：跳到版本列表
+    callback start-install();
+    callback select-instance(string);
+    // 确认弹窗（移除实例等破坏性操作）
+    callback confirm-accept();
+    callback confirm-cancel();
+
+    // 导航高亮由路由推导，不在 Rust 侧维护第二份状态。
+    // 一级只有四项：首页 / 实例库 / 下载中心 / 设置；账号页不点亮任何项。
+    pure function nav-index() -> int {
+        if (root.current-page == 0) { return 0; }
+        if (root.current-page == 1 || root.current-page == 6 || root.current-page == 8) { return 1; }
+        if (root.current-page == 2 || root.current-page == 3 || root.current-page == 7) { return 2; }
+        if (root.current-page == 4) { return 3; }
+        return 4;
+    }
+
+    // 二级页：设置 / 实例工作台 / 资源详情 —— 隐藏侧栏，导航上移到工具栏。
+    pure function is-secondary() -> bool {
+        return root.current-page != 0;
+    }
+
+    // 返回箭头回到哪个页面：由当前页决定，不依赖任何可变状态。
+    // 之前用单一 back-target 当返回栈，任何一条路径写错就会永久粘住
+    // （实例库 → 添加目录 → 返回 → 再返回，回不到首页就是这么来的）。
+    pure function page-parent() -> int {
+        if (root.current-page == 4) { return root.settings-return; }
+        if (root.current-page == 8) { return 1; }
+        if (root.current-page == 6) { return 1; }
+        if (root.current-page == 7 || root.current-page == 9) { return 2; }
+        return 0;
+    }
+
+    pure function page-title() -> string {
+        if (root.current-page == 0) { return "首页"; }
+        if (root.current-page == 1) { return "实例库"; }
+        if (root.current-page == 8) { return "游戏目录"; }
+        if (root.current-page == 2 || root.current-page == 3 || root.current-page == 7) { return "下载中心"; }
+        if (root.current-page == 4) { return "设置"; }
+        if (root.current-page == 5) { return "账号与支持"; }
+        if (root.current-page == 6) { return "实例管理"; }
+        if (root.current-page == 9) { return root.install.title; }
+        return "";
+    }
+
+    // category 的编号是数据语义（0 版本、1 模组、2 资源包、3 光影、4 整合包），
+    // 与左列的视觉顺序不同，映射只在这里做一次。
+    pure function download-rail-index() -> int {
+        if (root.current-page == 3) { return 5; }
+        // 安装设置属于「游戏版本」这一节
+        if (root.current-page == 9) { return 0; }
+        if (root.versions-page.category == 4) { return 1; }
+        if (root.versions-page.category == 2) { return 3; }
+        if (root.versions-page.category == 3) { return 4; }
+        if (root.versions-page.category == 1) { return 2; }
+        return 0;
+    }
+
+    pure function toolbar-actions() -> [ToolbarAction] {
+        if (root.current-page == 8) {
+            return [
+                { id: "add-directory", label: "添加目录", icon: 8, primary: true, icon-only: false },
+            ];
+        }
+        if (root.current-page == 1) {
+            return [
+                { id: "refresh", label: "", icon: 19, primary: false, icon-only: true },
+                { id: "scan", label: "扫描目录", icon: 0, primary: false, icon-only: false },
+                { id: "create", label: "新建实例", icon: 8, primary: true, icon-only: false },
+            ];
+        }
+        return [];
+    }
+
+    pure function page-subject() -> string {
+        if (root.current-page == 6) { return root.detail.name; }
+        if (root.current-page == 7) { return root.versions-page.detail-title; }
+        if (root.current-page == 9) { return root.install.subject; }
+        return "";
+    }
+
+    HorizontalLayout {
+        // 窗口有多个子元素（Toast 与三个弹窗）时，根布局拿不到「铺满窗口」的约束，
+        // 会按子项 preferred 高度收缩；内容矮的页面（设置）因此只剩内容高度。
+        // 显式绑窗口尺寸最稳（100% 会跟着这个 preferred 走，是循环）。
+        width: root.width;
+        height: root.height;
+
+        // ───────── 左侧导航（210px；二级页隐藏）─────────
+        if !root.is-secondary() : NavigationRail {
+            active: root.nav-index();
+            account-name: root.account-name;
+            account-subtitle: root.account-subtitle;
+            account-initial: root.account-initial;
+            account-avatar: root.account-avatar;
+            account-avatar-ready: root.account-avatar-ready;
+
+            // 版本安装 / 资源中心共用 page 2，靠 category 区分；
+            // 先写模型再切页，避免页面实例化时把 category 覆盖回 0。
+            navigate(index) => {
+                if (index == 0) {
+                    root.current-page = 0;
+                } else if (index == 1) {
+                    root.current-page = 1;
+                } else if (index == 2) {
+                    root.current-page = 2;
+                } else if (index == 3) {
+                    root.settings-return = 0;
+                    root.current-page = 4;
+                }
+            }
+
+            open-account() => { root.current-page = 5; }
+        }
+
+        // ───────── 主内容区：顶栏 + 页面宿主 ─────────
+        VerticalLayout {
+            horizontal-stretch: 1;
+            // 交叉轴也默认按 preferred 走：不加这行，内容矮的页面（设置）整列只有
+            vertical-stretch: 1;
+
+            ContextBar {
+                title: root.page-title();
+                subject: root.page-subject();
+                instance-label: root.current-page == 7 && root.current-instance-name != ""
+                    ? "安装到：" + root.current-instance-name
+                    : "";
+                show-back: root.is-secondary();
+                actions: root.toolbar-actions();
+                back() => {
+                    if (root.current-page == 6) {
+                        root.detail-back();
+                    } else if (root.current-page == 7) {
+                        root.resource-back();
+                    } else {
+                        root.current-page = root.page-parent();
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                // 交叉轴默认按子项 preferred 收缩（vertical-stretch 在这条链上不生效），
+                // 内容矮的页面（设置）只剩内容高度。直接绑窗口剩余高度最稳。
+                height: root.height - Tokens.toolbar-height;
+                background: Tokens.canvas;
+                clip: true;
+
+                HorizontalLayout {
+                    width: 100%;
+                    height: 100%;
+
+                    // ───────── 页内左列（首页之外的整页替换页自绘）─────────
+                    // 下载中心三个分类页共用一条左列，所以放在壳层而不是各页里。
+                    if root.current-page == 2 || root.current-page == 3 || root.current-page == 9 : DownloadRail {
+                        selected: root.download-rail-index();
+                        queue-count: root.tasks-page.running;
+                        select(index) => {
+                            if (index == 5) {
+                                root.current-page = 3;
+                            } else {
+                                root.set-category(index == 0 ? 0 : index == 1 ? 4 : index - 1);
+                                root.current-page = 2;
+                            }
+                        }
+                        open-settings() => {
+                            root.settings-return = 2;
+                            root.current-page = 4;
+                        }
+                    }
+
+                    if root.current-page == 4 : SettingsRail {
+                        selected: root.settings.section;
+                        select(index) => { root.settings.section = index; }
+                    }
+
+                    if root.current-page == 6 : WorkbenchRail {
+                        selected: root.detail.tab;
+                        instance-name: root.detail.name;
+                        instance-info: root.detail.rail-info;
+                        icon: root.detail.icon;
+                        has-icon: root.detail.has-icon;
+                        icon-text: root.detail.icon-text;
+                        select(index) => { root.detail.tab = index; }
+                    }
+
+                        if root.current-page == 8 : InstancesRail {
+                            directories: root.directories;
+                            page: root.instances-page;
+                            set-directory(path) => {
+                                root.set-instance-directory(path);
+                                root.current-page = 1;
+                            }
+                            set-view(value) => {
+                                root.set-instance-view(value);
+                                root.current-page = 1;
+                            }
+                            set-filter(value) => {
+                                root.set-instance-filter(value);
+                                root.current-page = 1;
+                            }
+                            open-directories() => { }
+                        }
+
+                    // ───────── 页面宿主（左列右侧的剩余宽度）─────────
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        vertical-stretch: 1;
+                        background: Tokens.canvas;
+                        clip: true;
+
+                        if root.current-page == 0 : HomePage {
+                            instances: root.instances;
+                            crash-banner: root.crash-banner;
+                            greeting-name: root.greeting-name;
+                            memory-hint: root.memory-hint;
+                            hero-image: root.hero-image;
+                            has-hero: root.has-hero;
+                            java-hint: root.java-hint;
+                            java-ready: root.java-ready;
+                            account-line: root.home-account-line;
+                            java-line: root.home-java-line;
+                            memory-line: root.home-memory-line;
+                            source-line: root.home-source-line;
+                            update-banner: root.home-update-banner;
+                            launch-instance(id) => { root.launch-instance(id); }
+                            start-install() => { root.start-install(); }
+                            select-instance(id) => { root.select-instance(id); }
+                            open-instance(id) => { root.open-instance(id); }
+                            open-instances() => { root.current-page = 1; }
+                            open-settings() => { root.settings-return = 0; root.current-page = 4; }
+                            open-crash() => { root.crash.open = true; }
+                            dismiss-crash() => { root.crash-banner = ""; }
+                            open-login() => { root.open-login(); }
+                            download-java() => { root.download-java(); }
+                            pick-import() => { root.pick-import-pack(); }
+                            scan-instances() => { root.scan-instances(); }
+                            open-update() => { root.open-update(); }
+                        }
+
+                        if root.current-page == 1 : InstancesPage {
+                            instances: root.instance-view;
+                            page: root.instances-page;
+                            directories: root.directories;
+                            query <=> root.instances-page.query;
+                            start-install() => { root.start-install(); }
+                            open-instance(id) => { root.open-instance(id); }
+                            refresh-instances() => { root.refresh-instances(); }
+                            scan-instances() => { root.scan-instances(); }
+                            launch-instance(id) => { root.launch-instance(id); }
+                            reveal-instance(id) => { root.reveal-instance(id); }
+                            remove-instance(id) => { root.remove-instance(id); }
+                            toggle-select(id) => { root.toggle-select(id); }
+                            start-select(id) => { root.start-select(id); }
+                            cancel-select() => { root.cancel-select(); }
+                            launch-selected() => { root.launch-selected(); }
+                            export-selected() => { root.export-selected(); }
+                            remove-selected() => { root.remove-selected(); }
+                            set-query(value) => { root.set-instance-query(value); }
+                            set-filter(value) => { root.set-instance-filter(value); }
+                            set-view(value) => { root.set-instance-view(value); }
+                            set-directory(value) => { root.set-instance-directory(value); }
+                            open-directories() => { root.open-game-directories(); }
+                            clear-filters() => { root.clear-filters(); }
+                            pick-import() => { root.pick-import-pack(); }
+                        }
+
+                        if root.current-page == 8 : GameDirectoriesPage {
+                            directories: root.directories;
+                            form-hint: root.directories-hint;
+                            form-hint-tone: root.directories-hint-tone;
+                            show-add <=> root.show-directory-add;
+                            new-path <=> root.new-directory-path;
+                            set-default(path) => { root.set-game-directory-default(path); }
+                            open-directory(path) => { root.open-game-directory(path); }
+                            remove-directory(path) => { root.remove-game-directory(path); }
+                            begin-add() => { root.begin-add-game-directory(); }
+                            confirm-add() => { root.confirm-add-game-directory(); }
+                            cancel-add() => { root.cancel-add-game-directory(); }
+                        }
+
+                        if root.current-page == 6 : InstanceDetailPage {
+                            instance-name: root.detail.name;
+                            instance-info: root.detail.info;
+                            icon: root.detail.icon;
+                            has-icon: root.detail.has-icon;
+                            icon-text: root.detail.icon-text;
+                            active-tab <=> root.detail.tab;
+                            mc-version: root.detail.mc-version;
+                            mod-query <=> root.detail.mod-query;
+                            export-diagnostics() => { root.export-diagnostics(); }
+                            open-log-dir() => { root.open-log-dir(); }
+                            info-rows: root.detail.info-rows;
+                            renaming: root.detail.renaming;
+                            name-draft <=> root.detail.name-draft;
+                            mods: root.detail.mods;
+                            mods-hint: root.detail.mods-hint;
+                            mods-update-hint: root.detail.mods-update-hint;
+                            mod-updates: root.detail.mod-updates;
+                            log-lines: root.detail.log-lines;
+                            log-hint: root.detail.log-hint;
+                            log-diagnosis: root.detail.log-diagnosis;
+                            memory-mb <=> root.detail.memory-mb;
+                            game-width <=> root.detail.game-width;
+                            game-height <=> root.detail.game-height;
+                            fullscreen <=> root.detail.fullscreen;
+                            jvm-args <=> root.detail.jvm-args;
+                            game-args <=> root.detail.game-args;
+                            java-path <=> root.detail.java-path;
+                            java-mode <=> root.detail.java-mode;
+                            java-requirement: root.detail.java-requirement;
+                            components: root.detail.components;
+                            icon-path-draft <=> root.detail.icon-path-draft;
+                            icon-choices-a: root.detail.icon-choices-a;
+                            icon-choices-b: root.detail.icon-choices-b;
+                            icon-kind: root.detail.icon-kind;
+                            pick-icon(id) => { root.pick-instance-icon(id); }
+                            settings-status: root.detail.settings-status;
+                            java-options: root.detail.java-options;
+                            open-component(id) => { root.open-component(id); }
+                            remove() => { root.remove-instance(root.detail.id); }
+                            back() => { root.detail-back(); }
+                            launch() => { root.detail-launch(); }
+                            open-folder() => { root.detail-open-folder(); }
+                            refresh() => { root.detail-refresh(); }
+                            repair() => { root.detail-repair(); }
+                            start-rename() => { root.detail-start-rename(); }
+                            save-rename() => { root.detail-save-rename(); }
+                            cancel-rename() => { root.detail-cancel-rename(); }
+                            check-mod-updates() => { root.check-mod-updates(); }
+                            open-mod-update(url) => { root.open-mod-update(url); }
+                            toggle-mod(file) => { root.toggle-mod(file); }
+                            filter-mods(query) => { root.filter-mods(query); }
+                            remove-mod(file) => { root.remove-mod(file); }
+                            reload-log() => { root.detail-reload-log(); }
+                            save-settings() => { root.game-settings-save(); }
+                            reset-settings() => { root.game-settings-reset(); }
+                            set-icon(path) => { root.set-instance-icon(path); }
+                            reset-icon() => { root.reset-instance-icon(); }
+                            scan-java() => { root.scan-java(); }
+                            use-java(path) => { root.use-java(path); }
+                            export-modpack() => { root.export-modpack(); }
+                        }
+
+                        // 版本安装（category == 0）
+                        if root.current-page == 2 && root.versions-page.category == 0 : VersionsPage {
+                            versions: root.versions;
+                            filter: root.versions-page.filter;
+                            query <=> root.versions-page.query;
+                            count-hint: root.versions-page.count-hint;
+                            installed-mc: root.versions-page.installed-mc;
+                            set-filter(value) => { root.set-version-filter(value); }
+                            set-query(value) => { root.set-version-query(value); }
+                            open-install(id) => { root.open-install(id); }
+                        }
+
+                        // 资源中心（category 1..4）
+                        if root.current-page == 2 && root.versions-page.category != 0 : ResourcesPage {
+                            cards: root.resources;
+                            category: root.versions-page.category;
+                            sort: root.versions-page.resource-sort;
+                            resource-mc: root.versions-page.resource-mc;
+                            mc-choices: root.versions-page.mc-choices;
+                            resource-loader: root.versions-page.resource-loader;
+                            resource-env: root.versions-page.resource-env;
+                            pager: root.versions-page.resource-pager;
+                            source: root.versions-page.resource-source;
+                            hint: root.versions-page.resource-hint;
+                            target-hint: root.versions-page.target-hint;
+                            query <=> root.versions-page.resource-query;
+                            set-category(value) => { root.set-category(value); }
+                            set-source(value) => { root.set-resource-source(value); }
+                            search-resources(text, category, sort, mc, source, loader, env, page) => { root.search-resources(text, category, sort, mc, source, loader, env, page); }
+                            install-resource(id, category) => { root.install-resource(id, category); }
+                            goto-resource-page(page) => { root.goto-resource-page(page); }
+                            open-resource(id, category) => { root.open-resource(id, category); }
+                            check-updates() => { root.check-updates(); }
+                        }
+
+                        if root.current-page == 9 : InstallPage {
+                            page <=> root.install;
+                            set-name(value) => { root.set-install-name(value); }
+                            pick-icon(id) => { root.pick-install-icon(id); }
+                            pick-icon-file() => { root.pick-install-icon-file(); }
+                            change-location() => { root.change-install-location(); }
+                            // 与安装向导共用同一份 InstallState 与加载器选择逻辑
+                            select-loader(id) => { root.select-loader(id); }
+                            select-loader-version(id) => { root.select-loader-version(id); }
+                            confirm-install() => { root.confirm-install(); }
+                            cancel() => { root.cancel-install(); }
+                        }
+
+                        if root.current-page == 7 : ResourceDetailPage {
+                            page: root.versions-page;
+                            versions: root.res-versions;
+                            title: root.versions-page.detail-title;
+                            summary: root.versions-page.detail-summary;
+                            icon: root.versions-page.detail-icon;
+                            has-icon: root.versions-page.detail-has-icon;
+                            target-label: root.versions-page.detail-target;
+                            site-url: root.versions-page.detail-url;
+                            tab: root.versions-page.detail-tab;
+                            loading: root.versions-page.detail-loading;
+                            back() => { root.resource-back(); }
+                            select-tab(index) => { root.set-detail-tab(index); }
+                            install-latest() => { root.install-recommended(); }
+                            install-version(id) => { root.install-version(id); }
+                            open-url(url) => { root.open-external(url); }
+                            select-changelog(id) => { root.select-changelog(id); }
+                            select-version-type(value) => { root.set-version-type(value); }
+                            select-detail-mc(value) => { root.set-detail-mc(value); }
+                            select-detail-loader(value) => { root.set-detail-loader(value); }
+                            goto-version-page(page) => { root.goto-version-page(page); }
+                        }
+
+                        if root.current-page == 3 : TasksPage {
+                            tasks: root.tasks;
+                            page: root.tasks-page;
+                            toggle-task(id) => { root.toggle-task(id); }
+                            clear-finished() => { root.clear-finished-tasks(); }
+                            pause-all() => { root.pause-all-tasks(); }
+                            open-settings() => { root.settings-return = 0; root.current-page = 4; }
+                        }
+
+                        if root.current-page == 4 : SettingsPage {
+                            section <=> root.settings.section;
+                            download-concurrency: root.settings.download-concurrency;
+                            download-source: root.settings.download-source;
+                            default-memory: root.settings.default-memory;
+                            defaults-status: root.settings.defaults-status;
+                            save-default-memory(value) => { root.save-default-memory(value); }
+                            apply-defaults-all() => { root.apply-defaults-all(); }
+                            gc-status: root.settings.gc-status;
+                            gc-armed: root.settings.gc-armed;
+                            cache-size: root.settings.cache-size;
+                            proxy-url <=> root.settings.proxy-url;
+                            data-dir: root.settings.data-dir;
+                            logs-dir: root.settings.logs-dir;
+                            diag-status: root.settings.diag-status;
+                            save-download-concurrency(value) => { root.save-download-concurrency(value); }
+                            save-proxy(value) => { root.save-proxy(value); }
+                            save-download-source(value) => { root.save-download-source(value); }
+                            open-data-dir() => { root.open-data-dir(); }
+                            open-log-dir() => { root.open-log-dir(); }
+                            export-diagnostics() => { root.export-diagnostics(); }
+                            run-shared-gc() => { root.run-shared-gc(); }
+                        }
+
+                        if root.current-page == 5 : AccountsPage {
+                            accounts: root.accounts;
+                            new-username <=> root.accounts-page.new-username;
+                            login-status <=> root.accounts-page.login-status;
+                            login-code <=> root.accounts-page.login-code;
+                            login-url <=> root.accounts-page.login-url;
+                            last-incident: root.crash-banner;
+                            current-hint: root.account-name == "未登录"
+                                ? "尚未登录 · 添加账号后即可启动游戏"
+                                : "当前账号令牌有效 · 到期前自动续期";
+                            diag-status: root.settings.diag-status;
+                            export-diagnostics() => { root.export-diagnostics(); }
+                            open-log-dir() => { root.open-log-dir(); }
+                            use-account(id) => { root.use-account(id); }
+                            remove-account(id) => { root.remove-account(id); }
+                            add-offline-account(name) => { root.add-offline-account(name); }
+                            microsoft-login() => { root.microsoft-login(); }
+                            open-login-url() => { root.open-login-url(); }
+                            copy-login-code() => { root.copy-login-code(); }
+                            }
+                    }
+                }
+            }
+        }
+    }
+
+    // Toast
+    if root.toast != "" : Rectangle {
+        x: root.width - self.width - Tokens.space-6;
+        y: root.height - self.height - Tokens.space-6;
+        width: 300px;
+        height: 52px;
+        border-radius: Tokens.radius-md;
+        background: Tokens.surface;
+        border-width: 1px;
+        border-color: Tokens.border;
+
+        Text {
+            text: root.toast;
+            font-size: 13px;
+            color: Tokens.text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+
+    // 安装向导：新建实例 或 给已有实例安装组件。
+    // 版本安装页已把配置内联，只有组件安装/其它入口才弹窗。
+    if root.install.open && !(root.current-page == 2 && root.install.mode == "new") : Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #00000066;
+
+        // 点遮罩关闭
+        TouchArea {
+            clicked => { root.close-install(); }
+        }
+
+        Rectangle {
+            // 在内容区（窗口宽度减去 220px 侧栏）居中，而不是整个窗口
+            x: 216px + (parent.width - 216px - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 580px;
+            height: root.install.mode == "component" ? 430px : 500px;
+            border-radius: Tokens.radius-lg;
+            background: Tokens.surface;
+            // 弹窗不用贴纸偏移阴影：偏移会把浅色阴影读成“卡片色块”，
+            // 让边框看起来比色块偏左（与内容区居中对齐无关）
+            border-width: 1px;
+            border-color: Tokens.border;
+
+            // 吞掉卡片范围的点击，避免穿透到遮罩关掉弹窗
+            TouchArea {
+                width: 100%;
+                height: 100%;
+            }
+
+            VerticalLayout {
+                padding: Tokens.space-6;
+                spacing: Tokens.space-2;
+
+                // ── 标题 ──
+                HorizontalLayout {
+                    spacing: Tokens.space-3;
+
+                    VerticalLayout {
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: root.install.title;
+                            font-size: 19px;
+                            font-weight: 700;
+                            color: Tokens.text;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: root.install.mode == "component"
+                                ? "只写入加载器文件，实例名称、存档与模组保持不变"
+                                : "将创建一个独立实例，游戏文件与设置都放在实例目录里";
+                            font-size: 11px;
+                            color: Tokens.text-secondary;
+                            overflow: elide;
+                        }
+                    }
+
+                                        IconButton {
+                        icon: 10;
+                        clicked => { root.close-install(); }
+                    }
+                }
+
+                // ── ① 加载器（仅新建实例）──
+                if root.install.mode == "new" : VerticalLayout {
+                    spacing: 6px;
+
+                    Text { text: "① 选择加载器"; font-size: 11px; color: Tokens.text-secondary; }
+
+                    HorizontalLayout {
+                        spacing: 9px;
+
+                        LoaderTile {
+                            title: "原版";
+                            subtitle: "纯净官方";
+                            icon: root.loader-icons.vanilla;
+                            selected: root.install.loader == "vanilla";
+                            clicked => { root.select-loader("vanilla"); }
+                        }
+                        LoaderTile {
+                            title: "Fabric";
+                            subtitle: root.install.fabric-available ? "装模组" : "该版本不支持";
+                            icon: root.loader-icons.fabric;
+                            selected: root.install.loader == "fabric" && root.install.fabric-available;
+                            available: root.install.fabric-available;
+                            clicked => { root.select-loader("fabric"); }
+                        }
+                        LoaderTile {
+                            title: "Forge";
+                            subtitle: "老牌加载器";
+                            icon: root.loader-icons.forge;
+                            clicked => { root.select-loader("forge"); }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 9px;
+
+                        LoaderTile {
+                            title: "NeoForge";
+                            subtitle: "Forge 分支";
+                            icon: root.loader-icons.neoforge;
+                            clicked => { root.select-loader("neoforge"); }
+                        }
+                        LoaderTile {
+                            title: "Quilt";
+                            subtitle: "Fabric 分支";
+                            icon: root.loader-icons.quilt;
+                            clicked => { root.select-loader("quilt"); }
+                        }
+                        LoaderTile {
+                            title: "更多";
+                            subtitle: "后续加入";
+                            icon: root.loader-icons.more;
+                            info-only: true;
+                        }
+                    }
+                }
+
+                // ── ② 加载器版本 ──
+                if root.install.mode == "component" || (root.install.loader != "vanilla" && root.install.fabric-available) : VerticalLayout {
+                    spacing: 6px;
+
+                    HorizontalLayout {
+                        spacing: Tokens.space-2;
+
+                        Text {
+                            text: root.install.mode == "component" ? "① 选择加载器版本" : "② 选择加载器版本";
+                            font-size: 11px;
+                            color: Tokens.text-secondary;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            text: root.install.status;
+                            font-size: 11px;
+                            color: root.install.failed ? Tokens.danger : Tokens.text-secondary;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        if root.install.failed : Button {
+                            text: "重试";
+                            variant: ButtonVariant.Secondary;
+                            size: ButtonSize.Small;
+                            min-width: 52px;
+                            clicked => { root.select-loader("fabric"); }
+                        }
+                    }
+
+                    Rectangle {
+                        height: root.install.mode == "component" ? 216px : 144px;
+                        border-radius: Tokens.radius-sm;
+                        background: Tokens.canvas;
+                        border-width: 1px;
+                        border-color: Tokens.border;
+
+                        if root.install.loading : Text {
+                            text: "正在获取加载器版本…";
+                            font-size: 12px;
+                            color: Tokens.text-secondary;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        if !root.install.loading && root.install.loader-versions.length == 0 : Text {
+                            text: root.install.status;
+                            font-size: 11px;
+                            color: Tokens.text-secondary;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            wrap: word-wrap;
+                        }
+
+                        ListView {
+                            for item in root.install.loader-versions : Rectangle {
+                                height: 30px;
+                                background: item.version == root.install.selected ? Tokens.primary-soft : transparent;
+
+                                HorizontalLayout {
+                                    padding-left: Tokens.space-2;
+                                    // 右侧留出 ListView 滚动条宽度，避免标签被压住
+                                    padding-right: 14px;
+                                    spacing: Tokens.space-2;
+
+                                    Text {
+                                        text: item.version;
+                                        font-size: 11px;
+                                        color: Tokens.text;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                        overflow: elide;
+                                    }
+
+                                    if item.tag != "" : Text {
+                                        text: item.tag;
+                                        font-size: 11px;
+                                        color: Tokens.primary;
+                                        vertical-alignment: center;
+                                    }
+
+                                    if item.version == root.install.selected : Text {
+                                        text: "✓";
+                                        font-size: 11px;
+                                        color: Tokens.primary;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                TouchArea {
+                                    clicked => { root.select-loader-version(item.version); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 新建原版：说明 + 占位（保持底部按钮固定）
+                if root.install.mode == "new" && root.install.loader == "vanilla" : Rectangle {
+                    vertical-stretch: 1;
+                    background: transparent;
+
+                    Text {
+                        text: "原版不包含任何模组加载器；之后可在实例的「组件」标签页安装 Forge / NeoForge / Quilt。";
+                        font-size: 11px;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                }
+
+                // 弹性留白：让预览与底部按钮固定在下方，其余间距保持 8px
+                Rectangle { vertical-stretch: 1; background: transparent; }
+
+                // ── 预览 ──
+                Rectangle {
+                    height: 34px;
+                    border-radius: Tokens.radius-sm;
+                    background: Tokens.canvas;
+                    border-width: 1px;
+                    border-color: Tokens.border.with-alpha(0.4);
+
+                    Text {
+                        x: Tokens.space-3;
+                        width: parent.width - Tokens.space-6;
+                        height: parent.height;
+                        text: root.install.preview;
+                        font-size: 11px;
+                        color: Tokens.text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+
+                // ── 操作 ──
+                HorizontalLayout {
+                    spacing: Tokens.space-2;
+                    alignment: end;
+
+                                        Button {
+                        text: "取消";
+                        variant: ButtonVariant.Secondary;
+                        size: ButtonSize.Small;
+                        min-width: 72px;
+                        clicked => { root.close-install(); }
+                    }
+
+                                        Button {
+                        text: root.install.mode == "component" ? "安装组件" : "开始安装";
+                        variant: ButtonVariant.Primary;
+                        size: ButtonSize.Small;
+                        min-width: 104px;
+                        enabled: root.install.selected != "" || (root.install.mode == "new" && root.install.loader == "vanilla");
+                        clicked => { root.confirm-install(); }
+                    }
+                }
+            }
+        }
+    }
+
+    // 崩溃诊断弹窗（非 0 退出自动打开，对应 HMCL 的 GameCrashWindow）
+    if root.crash.open : Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #00000066;
+
+        TouchArea {
+            clicked => { root.close-crash(); }
+        }
+
+        Rectangle {
+            // 在内容区（窗口宽度减去 220px 侧栏）居中，而不是整个窗口
+            x: 216px + (parent.width - 216px - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 560px;
+            height: 380px;
+            border-radius: Tokens.radius-lg;
+            background: Tokens.surface;
+            border-width: 1px;
+            border-color: Tokens.danger;
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+            }
+
+            VerticalLayout {
+                padding: Tokens.space-6;
+                spacing: Tokens.space-2;
+
+                HorizontalLayout {
+                    spacing: Tokens.space-2;
+
+                    Text {
+                        text: "游戏异常退出";
+                        font-size: 12px;
+                        color: Tokens.danger;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                                        IconButton {
+                        icon: 10;
+                        clicked => { root.close-crash(); }
+                    }
+                }
+
+                Text {
+                    text: root.crash.title;
+                    font-size: 19px;
+                    font-weight: 700;
+                    color: Tokens.text;
+                    wrap: word-wrap;
+                }
+
+                Text {
+                    text: "下面是根据日志末尾自动匹配的建议；完整日志与启动参数见「查看日志」。";
+                    font-size: 11px;
+                    color: Tokens.text-secondary;
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    border-radius: Tokens.radius-sm;
+                    background: Tokens.canvas;
+                    border-width: 1px;
+                    border-color: Tokens.border;
+
+                    ScrollView {
+                        viewport-width: self.width;
+                        viewport-height: body.preferred-height + Tokens.space-4;
+
+                        body := Text {
+                            x: Tokens.space-3;
+                            y: Tokens.space-2;
+                            width: parent.width - Tokens.space-6;
+                            text: root.crash.detail;
+                            font-size: 11px;
+                            color: Tokens.text;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: Tokens.space-2;
+                    alignment: end;
+
+                                        Button {
+                        text: "打开日志";
+                        variant: ButtonVariant.Secondary;
+                        size: ButtonSize.Small;
+                        min-width: 88px;
+                        clicked => { root.open-crash-log(); }
+                    }
+                                        Button {
+                        text: "导出报告";
+                        variant: ButtonVariant.Secondary;
+                        size: ButtonSize.Small;
+                        min-width: 88px;
+                        clicked => { root.export-crash-report(); }
+                    }
+                                        Button {
+                        text: "关闭";
+                        variant: ButtonVariant.Primary;
+                        size: ButtonSize.Small;
+                        min-width: 72px;
+                        clicked => { root.close-crash(); }
+                    }
+                }
+            }
+        }
+    }
+
+    // 全局确认弹窗（最上层；点遮罩取消）
+    InstallTargetDialog {
+        state: root.install-target;
+        browse() => { root.browse-install-target(); }
+        confirm() => { root.confirm-install-target(); }
+        cancel() => { root.cancel-install-target(); }
+    }
+
+    if root.confirm.open : Rectangle {
+        width: root.width;
+        height: root.height;
+        background: Tokens.overlay;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.confirm-cancel(); }
+        }
+
+        Rectangle {
+            // 在内容区（窗口宽度减去 216px 侧栏）居中，而不是整个窗口
+            x: 216px + (parent.width - 216px - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 420px;
+            height: confirm-body.preferred-height;
+            border-radius: Tokens.radius-lg;
+            background: Tokens.surface;
+            border-width: 1px;
+            border-color: Tokens.border;
+            drop-shadow-color: Tokens.shadow-raise;
+            drop-shadow-blur: 24px;
+            drop-shadow-offset-y: 8px;
+
+            // 吞掉卡片范围的点击，避免穿透到遮罩触发取消
+            TouchArea {
+                width: 100%;
+                height: 100%;
+            }
+
+            confirm-body := VerticalLayout {
+                padding: 24px;
+                spacing: 16px;
+
+                Text {
+                    text: root.confirm.title;
+                    font-size: 17px;
+                    font-weight: 600;
+                    color: Tokens.text;
+                    height: 24px;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: root.confirm.message;
+                    font-size: 13px;
+                    color: Tokens.text-secondary;
+                    wrap: word-wrap;
+                }
+
+                if root.confirm.checkbox-text != "" : HorizontalLayout {
+                    height: 24px;
+                    spacing: 10px;
+
+                    Toggle {
+                        checked: root.confirm.checked;
+                        y: (parent.height - self.height) / 2;
+                        toggled(value) => { root.confirm.checked = value; }
+                    }
+
+                    Text {
+                        text: root.confirm.checkbox-text;
+                        font-size: 12px;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+
+                    Button {
+                        text: "取消";
+                        variant: ButtonVariant.Secondary;
+                        size: ButtonSize.Small;
+                        min-width: 84px;
+                        clicked => { root.confirm-cancel(); }
+                    }
+
+                    Button {
+                        text: root.confirm.danger ? "移除" : "确认";
+                        variant: root.confirm.danger ? ButtonVariant.Danger : ButtonVariant.Primary;
+                        size: ButtonSize.Small;
+                        min-width: 96px;
+                        clicked => { root.confirm-accept(); }
+                    }
+                }
+            }
+        }
+    }
+}

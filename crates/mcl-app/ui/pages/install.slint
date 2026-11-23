@@ -1,0 +1,432 @@
+import { Tokens } from "../theme.slint";
+import { InstallState } from "../models.slint";
+import { Button, ButtonSize, ButtonVariant } from "../components/button.slint";
+import { Card } from "../components/card.slint";
+import { Icon } from "../components/icon.slint";
+import { TextField } from "../components/text-field.slint";
+import { LinkText } from "../components/link.slint";
+import { ScrollView } from "std-widgets.slint";
+
+// 字段标题在上、控件在下（不并排）；加载器默认不选 = 原版；内存不在这里（归实例设置）。
+export component InstallPage inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    in-out property <InstallState> page;
+
+    callback set-name(string);
+    callback pick-icon(string);
+    callback pick-icon-file();
+    callback change-location();
+    callback select-loader(string);
+    callback select-loader-version(string);
+    callback confirm-install();
+    callback cancel();
+
+    background: transparent;
+
+    pure function loader-label() -> string {
+        if (root.page.loader == "fabric") { return "Fabric"; }
+        if (root.page.loader == "forge") { return "Forge"; }
+        if (root.page.loader == "neoforge") { return "NeoForge"; }
+        if (root.page.loader == "quilt") { return "Quilt"; }
+        return "原版";
+    }
+
+    VerticalLayout {
+        padding: Tokens.page-padding;
+        spacing: Tokens.space-3;
+
+        ScrollView {
+            vertical-stretch: 1;
+            vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+            viewport-width: self.width;
+            viewport-height: body.preferred-height;
+
+            body := VerticalLayout {
+                padding-bottom: 24px;
+
+                // ── 版本标题 ──
+                Text {
+                    text: root.page.version;
+                    font-size: 26px;
+                    font-weight: 700;
+                    letter-spacing: -0.3px;
+                    color: Tokens.text;
+                    height: 32px;
+                    vertical-alignment: bottom;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: root.page.subject;
+                    font-size: 12.5px;
+                    color: Tokens.text-secondary;
+                    height: 22px;
+                    overflow: elide;
+                }
+
+                Rectangle { height: 22px; background: transparent; }
+
+                HorizontalLayout {
+                    spacing: 24px;
+
+                    // ═══ 左列：实例 ═══
+                    VerticalLayout {
+                        width: 744px;
+                        spacing: 16px;
+
+                        Card {
+                            VerticalLayout {
+                                padding: 24px;
+                                spacing: 0;
+
+                                Text { text: "实例"; font-size: 15px; font-weight: 600; color: Tokens.text; height: 24px; }
+
+                                Rectangle { height: 16px; background: transparent; }
+
+                                // 字段标题在上、控件在下
+                                Text { text: "实例名称"; font-size: 13px; color: Tokens.text; height: 20px; }
+                                Rectangle { height: 8px; background: transparent; }
+                                TextField {
+                                    height: 34px;
+                                    field-height: 34px;
+                                    text: root.page.name-draft;
+                                    placeholder: "实例名称";
+                                    edited(value) => { root.set-name(value); }
+                                }
+
+                                Rectangle { height: 16px; background: transparent; }
+
+                                HorizontalLayout {
+                                    Text { text: "存储位置"; font-size: 13px; color: Tokens.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                    Button {
+                                        text: "更改…";
+                                        variant: ButtonVariant.Secondary;
+                                        size: ButtonSize.Small;
+                                        min-width: 80px;
+                                        clicked => { root.change-location(); }
+                                    }
+                                }
+                                Rectangle { height: 6px; background: transparent; }
+                                Text {
+                                    text: root.page.location;
+                                    font-size: 11px;
+                                    color: Tokens.text-secondary;
+                                    height: 16px;
+                                    overflow: elide;
+                                }
+
+                                Rectangle { height: 18px; background: transparent; }
+
+                                HorizontalLayout {
+                                    Text { text: "实例图标"; font-size: 13px; color: Tokens.text; vertical-alignment: center; horizontal-stretch: 0; }
+                                    Rectangle { width: 12px; background: transparent; }
+                                    Text {
+                                        text: "默认按加载器选择，可在实例设置里更换";
+                                        font-size: 11.5px;
+                                        color: Tokens.text-secondary;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                        overflow: elide;
+                                    }
+                                }
+
+                                Rectangle { height: 10px; background: transparent; }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+
+                                    for choice in root.page.icon-choices : Rectangle {
+                                        width: 40px;
+                                        height: 40px;
+                                        border-radius: 9px;
+                                        background: root.page.icon-kind == choice.id ? Tokens.accent-soft : Tokens.control-track;
+                                        border-width: root.page.icon-kind == choice.id ? 2px : 0px;
+                                        border-color: Tokens.primary;
+
+                                        Image {
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                            width: parent.width - 10px;
+                                            height: parent.height - 10px;
+                                            source: choice.icon;
+                                            image-fit: contain;
+                                        }
+
+                                        TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { root.pick-icon(choice.id); }
+                                        }
+                                    }
+
+                                    // 自定义图片（系统文件对话框）
+                                    Rectangle {
+                                        width: 40px;
+                                        height: 40px;
+                                        border-radius: 9px;
+                                        background: Tokens.canvas;
+                                        border-width: 1px;
+                                        border-color: root.page.icon-is-file ? Tokens.primary : Tokens.border-strong;
+
+                                        if root.page.icon-is-file : Image {
+                                            x: 3px;
+                                            y: 3px;
+                                            width: parent.width - 6px;
+                                            height: parent.height - 6px;
+                                            source: root.page.icon;
+                                            image-fit: cover;
+                                        }
+
+                                        if !root.page.icon-is-file : Icon {
+                                            kind: 8;
+                                            icon-size: 16px;
+                                            weight: 1.6px;
+                                            icon-color: Tokens.text-secondary;
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                        }
+
+                                        TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { root.pick-icon-file(); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ═══ 模组加载器 ═══
+                        Card {
+                            VerticalLayout {
+                                padding: 24px;
+                                spacing: 0;
+
+                                Text { text: "模组加载器"; font-size: 15px; font-weight: 600; color: Tokens.text; height: 24px; }
+                                Text {
+                                    text: "默认不选加载器，即安装原版；选中后可在行内展开版本选择。";
+                                    font-size: 11.5px;
+                                    color: Tokens.text-secondary;
+                                    height: 18px;
+                                    overflow: elide;
+                                }
+
+                                Rectangle { height: 14px; background: transparent; }
+
+                                for row in root.page.loaders : VerticalLayout {
+                                    spacing: 0;
+
+                                    Rectangle {
+                                        height: 44px;
+                                        background: loader-touch.has-hover && row.enabled ? Tokens.surface-hover : transparent;
+                                        border-radius: 7px;
+                                        opacity: row.enabled ? 1.0 : 0.55;
+
+                                        HorizontalLayout {
+                                            padding-left: 4px;
+                                            padding-right: 8px;
+                                            spacing: 16px;
+
+                                            // 单选点
+                                            Rectangle {
+                                                width: 16px;
+                                                height: 16px;
+                                                border-radius: 8px;
+                                                background: transparent;
+                                                border-width: 1.3px;
+                                                border-color: root.page.loader == row.id ? Tokens.primary : (row.enabled ? #C7C7CC : Tokens.border);
+
+                                                if root.page.loader == row.id : Rectangle {
+                                                    x: 3px;
+                                                    y: 3px;
+                                                    width: 10px;
+                                                    height: 10px;
+                                                    border-radius: 5px;
+                                                    background: Tokens.primary;
+                                                }
+                                            }
+
+                                            Text {
+                                                text: row.name;
+                                                font-size: 13px;
+                                                color: row.enabled ? Tokens.text : Tokens.text-tertiary;
+                                                vertical-alignment: center;
+                                                horizontal-stretch: 1;
+                                                overflow: elide;
+                                            }
+
+                                            if row.hint != "" : Text {
+                                                text: row.hint;
+                                                font-size: 11.5px;
+                                                color: Tokens.text-tertiary;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+
+                                        loader-touch := TouchArea {
+                                            mouse-cursor: row.enabled ? pointer : default;
+                                            clicked => {
+                                                if (row.enabled) {
+                                                    // 再点一次已选的加载器 = 取消（回到原版）
+                                                    root.select-loader(root.page.loader == row.id ? "vanilla" : row.id);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // 选中后行内展开版本选择
+                                    if root.page.loader == row.id : Rectangle {
+                                        height: root.page.loading ? 40px : (root.page.failed ? 40px : Math.min(160px, root.page.loader-versions.length * 32px + 8px));
+                                        background: Tokens.canvas;
+                                        border-radius: 8px;
+
+                                        if root.page.loading : Text {
+                                            text: "正在获取版本列表…";
+                                            font-size: 11.5px;
+                                            color: Tokens.text-secondary;
+                                            vertical-alignment: center;
+                                            x: 12px;
+                                        }
+
+                                        if root.page.failed : HorizontalLayout {
+                                            padding-left: 12px;
+                                            spacing: 12px;
+                                            Text { text: "获取失败"; font-size: 11.5px; color: Tokens.danger; vertical-alignment: center; horizontal-stretch: 1; }
+                                            LinkText { text: "重试"; clicked => { root.select-loader(row.id); } }
+                                        }
+
+                                        if !root.page.loading && !root.page.failed : ScrollView {
+                                            viewport-width: self.width;
+                                            viewport-height: self.height;
+
+                                            VerticalLayout {
+                                                padding: 4px;
+
+                                                for version in root.page.loader-versions : Rectangle {
+                                                    height: 32px;
+                                                    border-radius: 6px;
+                                                    background: root.page.selected == version.version
+                                                        ? Tokens.primary-soft
+                                                        : ver-touch.has-hover ? Tokens.surface-hover : transparent;
+
+                                                    HorizontalLayout {
+                                                        padding-left: 10px;
+                                                        padding-right: 10px;
+                                                        spacing: 8px;
+                                                        Text {
+                                                            text: version.version;
+                                                            font-size: 12px;
+                                                            color: Tokens.text;
+                                                            vertical-alignment: center;
+                                                            horizontal-stretch: 1;
+                                                            overflow: elide;
+                                                        }
+                                                        if version.tag != "" : Text {
+                                                            text: version.tag;
+                                                            font-size: 11px;
+                                                            color: Tokens.text-secondary;
+                                                            vertical-alignment: center;
+                                                        }
+                                                    }
+
+                                                    ver-touch := TouchArea {
+                                                        mouse-cursor: pointer;
+                                                        clicked => { root.select-loader-version(version.version); }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle { height: 1px; background: Tokens.divider-row; }
+                                }
+
+                                if root.page.status != "" : Text {
+                                    text: root.page.status;
+                                    font-size: 11.5px;
+                                    color: Tokens.warning;
+                                    height: 20px;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+                    }
+
+                    // ═══ 右列：安装摘要 ═══
+                    Card {
+                        horizontal-stretch: 1;
+                        height: 320px;
+
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 0;
+
+                            Text { text: "安装摘要"; font-size: 11px; font-weight: 600; color: Tokens.text-tertiary; height: 16px; }
+
+                            Rectangle { height: 12px; background: transparent; }
+
+                            HorizontalLayout {
+                                spacing: 16px;
+
+                                Rectangle {
+                                    width: 64px;
+                                    height: 64px;
+                                    border-radius: 12px;
+                                    background: Tokens.control-track;
+
+                                    Image {
+                                        x: 6px;
+                                        y: 6px;
+                                        width: parent.width - 12px;
+                                        height: parent.height - 12px;
+                                        source: root.page.icon;
+                                        image-fit: contain;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    spacing: 4px;
+                                    Text { text: "Minecraft " + root.page.version; font-size: 15px; font-weight: 600; color: Tokens.text; height: 22px; overflow: elide; }
+                                    Text { text: root.page.subject; font-size: 12px; color: Tokens.text-secondary; height: 18px; overflow: elide; }
+                                }
+                            }
+
+                            Rectangle { height: 20px; background: transparent; }
+                            Rectangle { height: 1px; background: Tokens.divider-row; }
+                            Rectangle { height: 16px; background: transparent; }
+
+                            HorizontalLayout {
+                                Text { text: "加载器"; font-size: 11.5px; color: Tokens.text-secondary; horizontal-stretch: 1; vertical-alignment: center; }
+                                Text { text: root.loader-label(); font-size: 12.5px; color: Tokens.text; vertical-alignment: center; }
+                            }
+
+                            Rectangle { height: 12px; background: transparent; }
+
+                            HorizontalLayout {
+                                Text { text: "下载源"; font-size: 11.5px; color: Tokens.text-secondary; horizontal-stretch: 1; vertical-alignment: center; }
+                                Text { text: root.page.source-hint; font-size: 12.5px; color: Tokens.text; vertical-alignment: center; }
+                            }
+
+                            Rectangle { height: 20px; background: transparent; }
+
+                            Button {
+                                text: "开始安装";
+                                variant: ButtonVariant.Primary;
+                                size: ButtonSize.Large;
+                                width: 100%;
+                                clicked => { root.confirm-install(); }
+                            }
+
+                            Rectangle { height: 8px; background: transparent; }
+
+                            LinkText {
+                                text: "取消";
+                                clicked => { root.cancel(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

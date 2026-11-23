@@ -1,0 +1,20 @@
+[package]
+name = "mcl-app-model"
+description = "OMCLauncher 应用层：视图模型与任务编排（不依赖任何 GUI 框架）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+mcl-core = { path = "../mcl-core" }
+# 资源站封面解码（Modrinth CDN 以 WebP 为主，另有 PNG/JPEG/GIF）
+image = { version = "0.25", default-features = false, features = ["png", "webp"] }
+png = "0.18"
+# 档案 textures 属性是 base64(JSON)，解析皮肤地址用
+base64 = "0.22"
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+tokio.workspace = true
+zip.workspace = true

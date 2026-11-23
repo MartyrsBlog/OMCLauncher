@@ -1,0 +1,46 @@
+import { Tokens } from "../theme.slint";
+
+// 分段控件（HIG segmented control）：浅灰轨道 + 白胶囊，用于页内互斥筛选。
+// 位置与顺序由调用方给，UI 不另定义语义编号。
+export component Segmented inherits Rectangle {
+    in property <[string]> items;
+    in property <int> current: 0;
+    callback select(int);
+
+    height: 28px;
+    horizontal-stretch: 0;
+    border-radius: 8px;
+    background: Tokens.control-track;
+
+    HorizontalLayout {
+        padding-left: 2px;
+        padding-right: 2px;
+        padding-top: 2px;
+        padding-bottom: 2px;
+        spacing: 2px;
+
+        for label[index] in root.items : Rectangle {
+            height: 24px;
+            width: seg-text.preferred-width + 28px;
+            border-radius: 6px;
+            background: root.current == index
+                ? Tokens.surface
+                : seg-touch.has-hover ? Tokens.surface-hover : transparent;
+
+            seg-text := Text {
+                text: label;
+                font-size: 12px;
+                font-weight: root.current == index ? 600 : 400;
+                color: root.current == index ? Tokens.text : Tokens.nav-text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            seg-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.select(index); }
+            }
+        }
+    }
+}

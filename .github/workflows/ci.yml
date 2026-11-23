@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Linux 图形依赖（Slint/winit）
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libfontconfig1-dev
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: 缓存
+        uses: Swatinem/rust-cache@v2
+
+      - name: 格式检查
+        run: cargo fmt --all -- --check
+
+      - name: Clippy（警告视为错误）
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: 分层边界检查（应用层不得依赖 GUI）
+        shell: bash
+        run: |
+          if cargo tree -p mcl-app-model | grep -q "slint"; then
+            echo "::error::mcl-app-model 不得依赖 slint（否则换 UI 框架的成本会被重新放大）"
+            exit 1
+          fi
+
+      - name: 单元测试
+        run: cargo test --workspace
+
+      - name: 开发期代码遗留检查（发布前需清理）
+        run: |
+          echo "== 标记 TODO(release-cleanup) 的位置 =="
+          grep -rn "TODO(release-cleanup)" crates/ || echo "（当前无遗留标记）"
+
+      - name: Release 构建
+        run: cargo build --workspace --release
+
+      - name: 记录产物体积（NFR-PER 基线）
+        if: runner.os != 'Windows'
+        run: ls -lh target/release/mcl-app 2>/dev/null || true
+
+      - name: 记录产物体积（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Get-Item target/release/mcl-app.exe | Select-Object Name, Length

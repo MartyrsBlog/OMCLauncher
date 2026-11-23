@@ -1,0 +1,108 @@
+import { Tokens } from "../theme.slint";
+import { Icon } from "./icon.slint";
+
+// 按钮变体：主 / 次 / 幽灵 / 危险 / 深色底
+export enum ButtonVariant {
+    Primary,
+    Secondary,
+    Ghost,
+    Danger,
+    OnDark,
+}
+
+export enum ButtonSize {
+    Small,
+    Medium,
+    Large,
+}
+
+// 通用按钮：四态（hover / pressed / disabled / focus 由系统接管）+ 可选前置图标。
+// 宽度默认由内容撑开；需要固定宽度时在调用处设 `min-width`。
+export component Button inherits Rectangle {
+    in property <string> text;
+    in property <ButtonVariant> variant: ButtonVariant.Secondary;
+    in property <ButtonSize> size: ButtonSize.Medium;
+    // 0 = 无图标；取值见 icon.slint
+    in property <int> icon: 0;
+    in property <bool> enabled: true;
+    in property <length> control-height: 0px;
+    callback clicked();
+
+    height: root.control-height > 0px
+        ? root.control-height
+        : (root.size == ButtonSize.Small ? 28px : (root.size == ButtonSize.Large ? 40px : 32px));
+    horizontal-stretch: 0;
+    border-radius: Tokens.radius-sm;
+    border-width: 1px;
+    border-color: !root.enabled
+        ? Tokens.border
+        : root.variant == ButtonVariant.Primary
+            ? transparent
+            : root.variant == ButtonVariant.Secondary
+                ? Tokens.border-strong
+                : root.variant == ButtonVariant.OnDark
+                    ? #FFFFFF3D
+                    : transparent;
+    background: !root.enabled
+        ? Tokens.surface-muted
+        : root.variant == ButtonVariant.Primary
+            ? (touch.pressed
+                    ? Tokens.primary-pressed
+                    : touch.has-hover ? Tokens.primary-hover : Tokens.primary)
+            : root.variant == ButtonVariant.Secondary
+                ? (touch.pressed ? #ECECEF : touch.has-hover ? Tokens.surface-hover : Tokens.surface)
+                : root.variant == ButtonVariant.Danger
+                    ? (touch.pressed ? #F8D9D9 : touch.has-hover ? #FBE3E3 : Tokens.danger-soft)
+                    : root.variant == ButtonVariant.OnDark
+                        ? (touch.pressed ? #FFFFFF2E : touch.has-hover ? #FFFFFF1A : transparent)
+                        : (touch.pressed ? #00000012 : touch.has-hover ? #00000008 : transparent);
+    opacity: root.enabled ? 1.0 : 0.55;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+
+    HorizontalLayout {
+        alignment: center;
+        padding-left: root.variant == ButtonVariant.Primary ? 20px : 16px;
+        padding-right: root.variant == ButtonVariant.Primary ? 20px : 16px;
+        spacing: 8px;
+
+        if root.icon != 0 : Rectangle {
+            width: root.size == ButtonSize.Small ? 14px : 16px;
+            height: 100%;
+            background: transparent;
+
+            Icon {
+                kind: root.icon;
+                icon-size: root.size == ButtonSize.Small ? 14px : 16px;
+                icon-color: !root.enabled
+                    ? Tokens.text-tertiary
+                    : root.variant == ButtonVariant.Primary || root.variant == ButtonVariant.OnDark
+                        ? Tokens.text-inverse
+                        : root.variant == ButtonVariant.Danger ? Tokens.danger : Tokens.text;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+
+        Text {
+            text: root.text;
+            font-size: root.size == ButtonSize.Small ? 12px : (root.size == ButtonSize.Large ? 15px : 14px);
+            font-weight: 600;
+            color: !root.enabled
+                ? Tokens.text-tertiary
+                : root.variant == ButtonVariant.Primary || root.variant == ButtonVariant.OnDark
+                    ? Tokens.text-inverse
+                    : root.variant == ButtonVariant.Danger ? Tokens.danger : Tokens.text;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+    }
+}

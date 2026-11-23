@@ -1,0 +1,261 @@
+import { Tokens } from "../theme.slint";
+import { DirectoryItem } from "../models.slint";
+import { Button, ButtonVariant } from "../components/button.slint";
+import { Icon } from "../components/icon.slint";
+import { TextField } from "../components/text-field.slint";
+
+// 多目录列表（当前默认 / 设为默认 / 打开文件夹）+ 添加目录弹窗。
+// 从实例库左列「添加目录…」进入（HMCL GameDirectoryPage 模式）。
+export component GameDirectoriesPage inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    in property <[DirectoryItem]> directories;
+    in property <string> form-hint: "";
+    // 0 失败（红）/ 1 成功（绿）
+    in property <int> form-hint-tone: 0;
+    in-out property <bool> show-add: false;
+    in-out property <string> new-path: "";
+
+    callback set-default(string);
+    callback open-directory(string);
+    callback remove-directory(string);
+    callback begin-add();
+    callback confirm-add();
+    callback cancel-add();
+
+    background: transparent;
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        padding: Tokens.page-padding;
+        spacing: 0px;
+
+        Rectangle { height: 40px; background: transparent; }
+
+        Rectangle {
+            height: 320px;
+            border-radius: Tokens.radius-lg;
+            background: Tokens.surface;
+            border-width: 1px;
+            border-color: Tokens.border;
+
+            VerticalLayout {
+                padding-top: 20px;
+                spacing: 0px;
+
+                for dir in root.directories : VerticalLayout {
+                    spacing: 0px;
+
+                    // 行高 96；文字块与 30 高按钮共用一条中线
+                    Rectangle {
+                        height: 96px;
+
+                        HorizontalLayout {
+                            padding-left: 24px;
+                            padding-right: 24px;
+                            spacing: 0px;
+                            cross-axis-alignment: center;
+
+                            Rectangle {
+                                width: 672px;
+                                height: 38px;
+                                background: transparent;
+
+                                HorizontalLayout {
+                                    height: 20px;
+                                    spacing: 8px;
+
+                                    Text {
+                                        text: dir.label;
+                                        font-size: 13.5px;
+                                        font-weight: 600;
+                                        color: Tokens.text;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: left;
+                                        horizontal-stretch: 0;
+                                        overflow: elide;
+                                    }
+
+                                    if dir.is-default : Text {
+                                        text: "当前默认";
+                                        font-size: 11px;
+                                        font-weight: 500;
+                                        color: Tokens.primary;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: left;
+                                        horizontal-stretch: 0;
+                                    }
+
+                                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                                }
+
+                                Text {
+                                    y: 22px;
+                                    width: parent.width;
+                                    height: 16px;
+                                    text: dir.path;
+                                    font-size: 11px;
+                                    color: Tokens.text-secondary;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: left;
+                                    overflow: elide;
+                                }
+                            }
+
+                            Text {
+                                width: 104px;
+                                text: dir.count + " 个实例";
+                                font-size: 11.5px;
+                                color: Tokens.text-cell;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                            }
+
+                            HorizontalLayout {
+                                width: 208px;
+                                spacing: 12px;
+                                alignment: end;
+
+                                if !dir.is-default : Button {
+                                    text: "设为默认";
+                                    variant: ButtonVariant.Secondary;
+                                    min-width: 88px;
+                                    control-height: 30px;
+                                    clicked => { root.set-default(dir.path); }
+                                }
+
+                                Button {
+                                    text: "打开文件夹";
+                                    variant: ButtonVariant.Secondary;
+                                    min-width: 108px;
+                                    control-height: 30px;
+                                    clicked => { root.open-directory(dir.path); }
+                                }
+                            }
+
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: Tokens.divider-row;
+                    }
+                }
+
+                Rectangle {
+                    height: 36px;
+                    background: add-touch.has-hover ? Tokens.canvas : transparent;
+
+                    HorizontalLayout {
+                        padding-left: 28px;
+                        spacing: 18px;
+
+                        Icon {
+                            kind: 8;
+                            icon-size: 16px;
+                            weight: 1.8px;
+                            icon-color: Tokens.primary;
+                        }
+
+                        Text {
+                            text: "添加目录…";
+                            font-size: 13px;
+                            color: Tokens.primary;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    add-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.begin-add(); }
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: root.form-hint;
+            font-size: Tokens.font-caption;
+            color: root.form-hint-tone == 1 ? Tokens.success : Tokens.danger;
+            height: 18px;
+            overflow: elide;
+        }
+    }
+
+    // 添加目录弹窗（遮罩 + 居中卡；卡片自带全尺寸 TouchArea 防点击穿透）
+    if root.show-add : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000055;
+
+        mask-touch := TouchArea { }
+
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                alignment: center;
+
+                Rectangle {
+                    width: 440px;
+                    height: 208px;
+                    border-radius: 10px;
+                    background: Tokens.surface;
+                    border-width: 1px;
+                    border-color: Tokens.border;
+
+                    card-touch := TouchArea { }
+
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 16px;
+
+                        Text {
+                            text: "添加游戏目录";
+                            font-size: 15px;
+                            font-weight: 600;
+                            color: Tokens.text;
+                            height: 22px;
+                            vertical-alignment: center;
+                        }
+
+                        TextField {
+                            text <=> root.new-path;
+                            placeholder: "/home/user/games/minecraft（绝对路径）";
+                            field-height: 32px;
+                        }
+
+                        if root.form-hint != "" : Text {
+                            text: root.form-hint;
+                            font-size: Tokens.font-caption;
+                            color: Tokens.danger;
+                            height: 16px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                            Button {
+                                text: "取消";
+                                variant: ButtonVariant.Secondary;
+                                min-width: 80px;
+                                clicked => { root.cancel-add(); }
+                            }
+                            Button {
+                                text: "添加";
+                                variant: ButtonVariant.Primary;
+                                min-width: 80px;
+                                clicked => { root.confirm-add(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

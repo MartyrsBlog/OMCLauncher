@@ -1,0 +1,114 @@
+//
+// 契约页给定的基准值：
+//   间距 8 / 12 / 16 / 24 / 48 ｜ 圆角 10 / 14 / 18 / 24
+//   主色 #0066CC ｜ 文本 #1D1D1F ｜ 基准画布 1440×900
+//
+// 旧页面仍在引用 `Theme`（下方兼容层）。新代码只用 `Tokens`；
+// 逐页迁移完成后删除 `Theme`。
+
+export global Tokens {
+    // ── 画布与表面 ──
+    in property <color> canvas: #F5F5F7;
+    in property <color> surface: #FFFFFF;
+    in property <color> surface-muted: #F0F0F2;
+    in property <color> surface-hover: #F5F6F8;
+    in property <color> overlay: #0B0D1280;
+
+    // ── 左侧导航（亮色浅灰 / 深色近黑，由 nav-* 单独表达）──
+    in property <color> nav-surface: #ECEEF3;
+    in property <color> nav-hover: #E3E6EC;
+    in property <color> nav-active: #0066CC;
+    // 选中胶囊描边：FemtoVG 不支持 drop-shadow，用 1px 描边替代阴影
+    in property <color> nav-active-border: #0066CC;
+    in property <color> nav-text: #5F6368;
+    in property <color> nav-text-active: #FFFFFF;
+    in property <color> nav-group: #5F666E;
+    in property <color> nav-card: #E4E7ED;
+    in property <color> nav-card-hover: #DDE3EC;
+    in property <color> nav-avatar: #D5DBE4;
+    in property <color> nav-brand: #1D1D1F;
+
+    // ── 深色表面（账号登录卡 / 下载统计条）：与侧栏解耦，不随主题变浅 ──
+    in property <color> on-dark-surface: #15171C;
+    in property <color> on-dark-card: #23262D;
+    in property <color> on-dark-text: #9EA1A8;
+    in property <color> on-dark-text-active: #FFFFFF;
+    // 11px 分组/说明文字在 #15171C 上需 ≥4.5:1（原 #6B6E76 只有 3.52:1）
+    in property <color> on-dark-group: #8A8E96;
+
+    // ── 主色 ──
+    // 填充/选中统一用 primary（#0066CC，白字 4.85:1 达 AA）。
+    // accent 是 macOS 强调色，仅用于开关、焦点环等不承载小字的装饰。
+    in property <color> accent: #007AFF;
+    in property <color> accent-soft: #EAF3FF;
+    in property <color> primary: #0066CC;
+    in property <color> primary-hover: #0059B3;
+    in property <color> primary-pressed: #004C99;
+    in property <color> primary-soft: #E6F0FA;
+
+    // ── 语义色 ──
+    in property <color> success: #1D9A6B;
+    in property <color> success-soft: #E8F5EF;
+    in property <color> warning: #C77700;
+    in property <color> warning-soft: #FDF3E3;
+    in property <color> danger: #D93A3A;
+    in property <color> danger-soft: #FDECEC;
+    in property <color> info: #0066CC;
+    in property <color> info-soft: #EAF2FB;
+
+    // ── 文本 ──
+    in property <color> text: #1D1D1F;
+    in property <color> text-secondary: #6E6E73;
+    in property <color> text-tertiary: #8E8E93;
+    in property <color> text-cell: #5F6368;
+    in property <color> text-inverse: #FFFFFF;
+
+    // ── 描边 ──
+    in property <color> border: #E5E5EA;
+    in property <color> border-strong: #D2D2D7;
+    in property <color> control-track: #EEF1F4;
+    in property <color> divider-row: #EFEFF2;
+    in property <color> select-bar: #F2F7FE;
+
+    // ── 字号 ──
+    in property <length> font-display: 30px;
+    in property <length> font-title: 22px;
+    in property <length> font-heading: 17px;
+    in property <length> font-body: 14px;
+    in property <length> font-label: 13px;
+    in property <length> font-caption: 12px;
+    in property <length> font-micro: 11px;
+
+    // ── 尺寸（HIG 骨架）──
+    in property <length> nav-width: 210px;
+    in property <length> rail-width: 200px;
+    in property <length> toolbar-height: 48px;
+    in property <length> control-height: 28px;
+    in property <length> control-height-sm: 24px;
+    in property <length> list-row-height: 52px;
+    in property <length> list-row-compact: 40px;
+
+    // ── 间距 ──
+    in property <length> space-1: 4px;
+    in property <length> space-2: 8px;
+    in property <length> space-3: 12px;
+    in property <length> space-4: 16px;
+    in property <length> space-6: 24px;
+    in property <length> space-8: 32px;
+    in property <length> space-12: 48px;
+    in property <length> page-padding: 24px;
+    in property <length> page-gap: 20px;
+    in property <length> card-padding: 24px;
+
+    // ── 圆角 ──
+    in property <length> radius-sm: 7px;
+    in property <length> radius-md: 10px;
+    in property <length> radius-lg: 12px;
+    in property <length> radius-xl: 16px;
+    // 胶囊形请用「高度 / 2」；这里保留 999 只作标记，Slint 会画成椭圆而不是胶囊
+    in property <length> radius-pill: 999px;
+
+    // ── 阴影 ──
+    in property <color> shadow-soft: #0000000F;
+    in property <color> shadow-raise: #0000001A;
+}

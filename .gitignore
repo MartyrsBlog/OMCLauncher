@@ -1,0 +1,11 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+.cargo-home/
+
+.DS_Store
+Thumbs.db
+
+.data/
+*.log

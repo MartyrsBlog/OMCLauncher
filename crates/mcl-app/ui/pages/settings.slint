@@ -1,0 +1,487 @@
+import { Tokens } from "../theme.slint";
+import { Button, ButtonSize, ButtonVariant } from "../components/button.slint";
+import { Card } from "../components/card.slint";
+import { Badge, BadgeTone } from "../components/badge.slint";
+import { NumberField } from "../components/number-field.slint";
+import { TextField } from "../components/text-field.slint";
+import { LinkText } from "../components/link.slint";
+import { TabItem } from "../components/tab-item.slint";
+import { Icon } from "../components/icon.slint";
+
+// 所有项即时保存（写 settings.json）；代理与下载源需重启生效。
+export component SettingsPage inherits Rectangle {
+    width: 100%;
+    height: 100%;
+
+    // 下载并发数
+    in-out property <int> download-concurrency: 64;
+    callback save-download-concurrency(int);
+    // 新建实例默认内存（MB）
+    in-out property <int> default-memory: 4096;
+    in property <string> defaults-status: "";
+    callback save-default-memory(int);
+    callback apply-defaults-all();
+    // 网络代理（保存后重启生效）
+    in-out property <string> proxy-url: "";
+    callback save-proxy(string);
+    // 下载源：auto / official / mirror
+    in property <string> download-source: "auto";
+    callback save-download-source(string);
+    // 存储与日志
+    in property <string> data-dir: "";
+    in property <string> logs-dir: "";
+    in property <string> diag-status: "";
+    in property <string> cache-size: "";
+    callback open-data-dir();
+    callback open-log-dir();
+    callback export-diagnostics();
+    // 共享目录回收：两步确认
+    in-out property <string> gc-status: "";
+    in-out property <bool> gc-armed: false;
+    callback run-shared-gc();
+
+    // 当前分区：0 下载与网络 / 1 游戏默认 / 2 存储与维护 / 3 外观与动效 / 4 关于
+    // 由工具栏标签双向绑定（导航变体 C：设置页不再自绘左栏）
+    in-out property <int> section: 0;
+
+    background: transparent;
+
+    pure function source-label() -> string {
+        if (root.download-source == "official") { return "仅官方源"; }
+        if (root.download-source == "mirror") { return "仅镜像（BMCLAPI）"; }
+        return "自动 · 官方优先";
+    }
+
+    pure function section-title() -> string {
+        if (root.section == 1) { return "游戏默认"; }
+        if (root.section == 2) { return "存储与维护"; }
+        if (root.section == 3) { return "外观与动效"; }
+        if (root.section == 4) { return "关于 OMCLauncher"; }
+        return "下载与网络";
+    }
+
+    pure function section-hint() -> string {
+        if (root.section == 1) { return "新建实例的初始值；已有实例可在各自的「实例设置」里覆盖。"; }
+        if (root.section == 2) { return "数据目录、日志与共享文件的清理。"; }
+        if (root.section == 3) { return "界面主题与动效偏好。"; }
+        if (root.section == 4) { return "版本信息与第三方致谢。"; }
+        return "影响版本、加载器、整合包和资源中心的所有文件下载。";
+    }
+
+    VerticalLayout {
+        padding: Tokens.page-padding;
+        spacing: Tokens.page-gap;
+
+        HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: Tokens.page-gap;
+            // HIG：设置内容居中、限宽，避免 1440 下表单行拉到整屏
+            alignment: center;
+
+            // ── 分区内容 ──
+            Card {
+                width: 760px;
+                horizontal-stretch: 0;
+                // 高度随内容，避免半屏空白（P1）
+                vertical-stretch: 0;
+
+                VerticalLayout {
+                    padding-left: 32px;
+                    padding-right: 32px;
+                    padding-top: 28px;
+                    padding-bottom: 24px;
+                    spacing: 0;
+
+                    Text {
+                        text: root.section-hint();
+                        font-size: Tokens.font-caption;
+                        color: Tokens.text-secondary;
+                        height: 18px;
+                        overflow: elide;
+                    }
+
+                    Rectangle { height: 12px; background: transparent; }
+
+                    // ═══ 下载与网络 ═══
+                    if root.section == 0 : VerticalLayout {
+                        spacing: 0;
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 16px;
+                            cross-axis-alignment: center;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "下载源"; font-size: Tokens.font-label; font-weight: 600; color: Tokens.text; height: 20px; }
+                                Text { text: "自动模式优先官方源，失败时按顺序切换镜像。保存后重启生效。"; font-size: Tokens.font-caption; color: Tokens.text-secondary; height: 17px; overflow: elide; }
+                            }
+
+                            Button {
+                                text: root.source-label();
+                                variant: ButtonVariant.Secondary;
+                                size: ButtonSize.Small;
+                                min-width: 168px;
+                                clicked => {
+                                    if (root.download-source == "auto") {
+                                        root.save-download-source("official");
+                                    } else if (root.download-source == "official") {
+                                        root.save-download-source("mirror");
+                                    } else {
+                                        root.save-download-source("auto");
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: Tokens.border; }
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 16px;
+                            cross-axis-alignment: center;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "下载并发数"; font-size: Tokens.font-label; font-weight: 600; color: Tokens.text; height: 20px; }
+                                Text { text: "建议保持 64；较高数值不会始终带来更快速度，下一个任务生效。"; font-size: Tokens.font-caption; color: Tokens.text-secondary; height: 17px; overflow: elide; }
+                            }
+
+                            NumberField {
+                                minimum: 1;
+                                maximum: 256;
+                                value <=> root.download-concurrency;
+                                edited(value) => { root.save-download-concurrency(value); }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: Tokens.border; }
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 16px;
+                            cross-axis-alignment: center;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "网络代理"; font-size: Tokens.font-label; font-weight: 600; color: Tokens.text; height: 20px; }
+                                Text { text: "留空表示直连；支持 HTTP / HTTPS / SOCKS5，回车保存后重启生效。"; font-size: Tokens.font-caption; color: Tokens.text-secondary; height: 17px; overflow: elide; }
+                            }
+
+                            TextField {
+                                width: 260px;
+                                field-height: 38px;
+                                text <=> root.proxy-url;
+                                placeholder: "http://127.0.0.1:7890";
+                                accepted(value) => { root.save-proxy(value); }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: Tokens.border; }
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 16px;
+                            cross-axis-alignment: center;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "缓存占用"; font-size: Tokens.font-label; font-weight: 600; color: Tokens.text; height: 20px; }
+                                Text { text: "下载文件按内容哈希复用（上限 512 MB），封面缓存上限 64 MB，都按最近使用淘汰。"; font-size: Tokens.font-caption; color: Tokens.text-secondary; height: 17px; overflow: elide; }
+                            }
+
+                            Text {
+                                text: root.cache-size;
+                                font-size: 15px;
+                                font-weight: 600;
+                                color: Tokens.text;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                width: 96px;
+                            }
+                        }
+
+                        Rectangle { vertical-stretch: 1; background: transparent; }
+                    }
+
+                    // ═══ 游戏默认 ═══
+                    if root.section == 1 : VerticalLayout {
+                        spacing: 0;
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 16px;
+                            cross-axis-alignment: center;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "新建实例默认内存"; font-size: Tokens.font-label; font-weight: 600; color: Tokens.text; height: 20px; }
+                                Text { text: "实例没有自己的 settings.json 时使用该值；范围 1024–32768 MB。"; font-size: Tokens.font-caption; color: Tokens.text-secondary; height: 17px; overflow: elide; }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 10px;
+
+                                NumberField {
+                                    minimum: 1024;
+                                    maximum: 32768;
+                                    value <=> root.default-memory;
+                                    edited(value) => { root.save-default-memory(value); }
+                                }
+
+                                Text { text: "MB"; width: 26px; font-size: Tokens.font-caption; color: Tokens.text-secondary; vertical-alignment: center; }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: Tokens.border; }
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 16px;
+                            cross-axis-alignment: center;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "应用到全部实例"; font-size: Tokens.font-label; font-weight: 600; color: Tokens.text; height: 20px; }
+                                Text { text: "把所有实例的内存上限改成上面的值；会覆盖各实例已保存的设置。"; font-size: Tokens.font-caption; color: Tokens.text-secondary; height: 17px; overflow: elide; }
+                            }
+                        }
+
+                        if root.defaults-status != "" : Text {
+                            text: root.defaults-status;
+                            font-size: Tokens.font-caption;
+                            color: Tokens.success;
+                            height: 18px;
+                            overflow: elide;
+                        }
+
+                        Rectangle { vertical-stretch: 1; background: transparent; }
+                    }
+
+                    // ═══ 存储与维护 ═══
+                    if root.section == 2 : VerticalLayout {
+                        spacing: 0;
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 16px;
+                            cross-axis-alignment: center;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "数据目录"; font-size: Tokens.font-label; font-weight: 600; color: Tokens.text; height: 20px; }
+                                Text { text: root.data-dir; font-size: Tokens.font-caption; color: Tokens.text-secondary; height: 17px; overflow: elide; }
+                            }
+
+                            Button {
+                                text: "打开";
+                                variant: ButtonVariant.Secondary;
+                                size: ButtonSize.Small;
+                                min-width: 80px;
+                                clicked => { root.open-data-dir(); }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: Tokens.border; }
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 16px;
+                            cross-axis-alignment: center;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "日志目录"; font-size: Tokens.font-label; font-weight: 600; color: Tokens.text; height: 20px; }
+                                Text { text: root.logs-dir; font-size: Tokens.font-caption; color: Tokens.text-secondary; height: 17px; overflow: elide; }
+                            }
+
+                            Button {
+                                text: "打开日志";
+                                variant: ButtonVariant.Secondary;
+                                size: ButtonSize.Small;
+                                min-width: 96px;
+                                clicked => { root.open-log-dir(); }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: Tokens.border; }
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 16px;
+                            cross-axis-alignment: center;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "共享目录清理"; font-size: Tokens.font-label; font-weight: 600; color: Tokens.text; height: 20px; }
+                                Text {
+                                    text: root.gc-status == ""
+                                        ? "只删除没有任何实例引用的类库与资源文件，可被安装 / 修复重新下载；未完成的下载会保留。"
+                                        : root.gc-status;
+                                    font-size: Tokens.font-caption;
+                                    color: Tokens.text-secondary;
+                                    height: 34px;
+                                    wrap: word-wrap;
+                                    overflow: elide;
+                                }
+                            }
+
+                            Button {
+                                text: root.gc-armed ? "确认清理" : "扫描并清理";
+                                variant: root.gc-armed ? ButtonVariant.Danger : ButtonVariant.Secondary;
+                                size: ButtonSize.Small;
+                                min-width: 104px;
+                                clicked => { root.run-shared-gc(); }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: Tokens.border; }
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 16px;
+                            cross-axis-alignment: center;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "诊断包"; font-size: Tokens.font-label; font-weight: 600; color: Tokens.text; height: 20px; }
+                                Text {
+                                    text: root.diag-status == ""
+                                        ? "导出系统与启动器信息，用于排查安装失败或异常退出；不含令牌。"
+                                        : root.diag-status;
+                                    font-size: Tokens.font-caption;
+                                    color: Tokens.text-secondary;
+                                    height: 17px;
+                                    overflow: elide;
+                                }
+                            }
+
+                            Button {
+                                text: "导出诊断包";
+                                variant: ButtonVariant.Secondary;
+                                size: ButtonSize.Small;
+                                min-width: 112px;
+                                clicked => { root.export-diagnostics(); }
+                            }
+                        }
+
+                        Rectangle { vertical-stretch: 1; background: transparent; }
+                    }
+
+                    // ═══ 外观与动效 ═══
+                    if root.section == 3 : VerticalLayout {
+                        spacing: 12px;
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            padding-top: 8px;
+
+                            Icon { kind: 22; icon-size: 18px; weight: 1.6px; icon-color: Tokens.text-tertiary; }
+                            Text {
+                                text: "主题与动效跟随系统外观，暂未提供开关。";
+                                font-size: Tokens.font-label;
+                                color: Tokens.text-secondary;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                                overflow: elide;
+                            }
+                            Badge { text: "规划中"; tone: BadgeTone.Neutral; }
+                        }
+
+                        Text {
+                            text: "已实现的动效：列表与卡片 180ms 缓出、进度条宽度插值、悬浮条滑入。后续会加入「减少动效」开关，用于低配机器与系统无障碍设置。";
+                            font-size: Tokens.font-caption;
+                            color: Tokens.text-tertiary;
+                            wrap: word-wrap;
+                        }
+
+                        Rectangle { vertical-stretch: 1; background: transparent; }
+                    }
+
+                    // ═══ 关于 ═══
+                    if root.section == 4 : VerticalLayout {
+                        spacing: 0;
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            Text { text: "版本"; font-size: Tokens.font-label; color: Tokens.text; horizontal-stretch: 1; height: 20px; }
+                            Text { text: "OMCLauncher 0.1.0"; font-size: Tokens.font-label; color: Tokens.text-secondary; height: 20px; }
+                        }
+
+                        Rectangle { height: 1px; background: Tokens.border; }
+
+                        HorizontalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            Text { text: "开源许可"; font-size: Tokens.font-label; color: Tokens.text; horizontal-stretch: 1; height: 20px; }
+                            Text { text: "GPL-3.0-only"; font-size: Tokens.font-label; color: Tokens.text-secondary; height: 20px; }
+                        }
+
+                        Rectangle { height: 1px; background: Tokens.border; }
+
+                        VerticalLayout {
+                            padding-top: 12px;
+                            spacing: 6px;
+
+                            Text { text: "第三方致谢"; font-size: Tokens.font-label; font-weight: 600; color: Tokens.text; height: 20px; }
+                            Text {
+                                text: "Mojang 官方下载源 / BMCLAPI（bangbang93 及节点贡献者）/ Modrinth / Slint（GPLv3 选项）/ HMCL 图标素材（GPL-3.0-or-later）";
+                                font-size: Tokens.font-caption;
+                                color: Tokens.text-secondary;
+                                wrap: word-wrap;
+                            }
+                        }
+
+                        Rectangle { vertical-stretch: 1; background: transparent; }
+                    }
+
+                    // ── 底部状态 ──
+                    Rectangle { height: 1px; background: Tokens.border; }
+
+                    HorizontalLayout {
+                        height: 56px;
+                        spacing: 16px;
+
+                        Button {
+                            text: "将游戏默认应用到全部实例";
+                            variant: ButtonVariant.Secondary;
+                            size: ButtonSize.Small;
+                            min-width: 196px;
+                            clicked => { root.apply-defaults-all(); }
+                        }
+
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                        Text {
+                            text: "所有更改已保存";
+                            font-size: Tokens.font-caption;
+                            color: Tokens.success;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

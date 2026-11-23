@@ -1,0 +1,12 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: OMCLauncher
+
+Files: *
+Copyright: 2026 blmay
+License: GPL-3.0-only
+
+Files: usr/share/icons/hicolor/256x256/apps/mclauncher.png
+Copyright: The HMCL Authors
+License: GPL-3.0-or-later
+Comment: 由 HMCL 的 assets/img/grass@2x.png 放大生成，见项目内
+ crates/mcl-app-model/assets/icons/NOTICE.md

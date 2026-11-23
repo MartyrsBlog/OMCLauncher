@@ -1,0 +1,435 @@
+import { Tokens } from "../theme.slint";
+import { ResourceCard, PagerState } from "../models.slint";
+import { Button, ButtonSize, ButtonVariant } from "../components/button.slint";
+import { Card } from "../components/card.slint";
+import { Icon } from "../components/icon.slint";
+import { Pager } from "../components/pager.slint";
+import { SearchField } from "../components/search-field.slint";
+import { Segmented } from "../components/segmented.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Menu } from "../components/menu.slint";
+
+component FilterField inherits Rectangle {
+    in property <string> text;
+    in property <length> field-width: 160px;
+    in property <bool> interactive: true;
+
+    callback clicked();
+
+    width: root.field-width;
+    height: 28px;
+    horizontal-stretch: 0;
+    border-radius: 6px;
+    background: Tokens.surface;
+    border-width: 1px;
+    border-color: Tokens.border-strong;
+    opacity: root.interactive ? 1.0 : 0.55;
+
+    Text {
+        x: 10px;
+        width: parent.width - 32px;
+        height: parent.height;
+        text: root.text;
+        font-size: 11.5px;
+        color: Tokens.text;
+        vertical-alignment: center;
+        horizontal-alignment: left;
+        overflow: elide;
+    }
+
+    Icon {
+        kind: 27;
+        icon-size: 12px;
+        weight: 1.6px;
+        icon-color: Tokens.text-secondary;
+        x: parent.width - 20px;
+        y: (parent.height - self.height) / 2;
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: root.interactive ? pointer : default;
+        clicked => {
+            if (root.interactive) {
+                root.clicked();
+            }
+        }
+    }
+}
+
+// 筛选两行（第一行 搜索/排序/来源/计数，第二行 游戏版本/加载器/环境/重置），
+// 卡片底部为页码式分页（每页 20，与版本表共用 Pager 组件与 Rust 侧页码算术）。
+export component ResourcesPage inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    in property <[ResourceCard]> cards;
+    // 1 模组 / 4 整合包 / 2 资源包 / 3 光影（只用于接口映射与占位图标）
+    in property <int> category: 1;
+    in property <string> sort: "relevance";
+    // 空 = 全部；由「游戏版本」下拉写入
+    in-out property <string> resource-mc: "";
+    // 「全部」+ 最近 40 个正式版
+    in property <[string]> mc-choices: [];
+    // 加载器筛选（空 = 全部；存展示名，Rust 转站点 id）
+    in-out property <string> resource-loader: "";
+    // 环境筛选（空 = 全部；客户端 / 服务端，CurseForge 不支持）
+    in-out property <string> resource-env: "";
+    in property <PagerState> pager;
+    // modrinth / curseforge / all
+    in property <string> source: "modrinth";
+    in property <string> hint: "";
+    in property <string> target-hint: "";
+    in-out property <string> query: "";
+    in-out property <length> mc-menu-x: 0;
+    in-out property <length> mc-menu-y: 0;
+    in-out property <length> loader-menu-x: 0;
+    in-out property <length> loader-menu-y: 0;
+    in-out property <length> env-menu-x: 0;
+    in-out property <length> env-menu-y: 0;
+
+    callback set-category(int);
+    callback set-source(string);
+    callback search-resources(string, int, string, string, string, string, string, int);
+    callback install-resource(string, int);
+    callback goto-resource-page(int);
+    callback open-resource(string, int);
+    callback check-updates();
+
+    background: transparent;
+
+    // 首次进入即拉一页（空关键词 = 站点热门），避免空白页
+    init => {
+        // 用当前页码：从资源详情返回时页面会重建，不该跳回第 1 页
+        root.search-resources(root.query, root.category, root.sort, root.resource-mc, root.source, root.resource-loader, root.resource-env, root.pager.page.max(1));
+    }
+
+    pure function sort-label() -> string {
+        if (root.sort == "downloads") { return "按下载量"; }
+        if (root.sort == "newest") { return "按最新"; }
+        return "按相关度";
+    }
+
+    pure function source-index() -> int {
+        if (root.source == "curseforge") { return 2; }
+        if (root.source == "modrinth") { return 1; }
+        return 0;
+    }
+
+    pure function search-placeholder() -> string {
+        if (root.category == 4) { return "搜索整合包"; }
+        if (root.category == 2) { return "搜索资源包"; }
+        if (root.category == 3) { return "搜索光影"; }
+        return "搜索模组";
+    }
+
+    pure function mc-label() -> string {
+        if (root.resource-mc == "") { return "游戏版本（全部）"; }
+        return root.resource-mc;
+    }
+
+    pure function loader-label() -> string {
+        if (root.resource-loader == "") { return "加载器（全部）"; }
+        return root.resource-loader;
+    }
+
+    pure function env-label() -> string {
+        if (root.resource-env == "") { return "环境（全部）"; }
+        return root.resource-env;
+    }
+
+    // CurseForge 检索接口没有环境维度：该来源下控件置灰，避免「选了却不过滤」
+    pure function env-enabled() -> bool {
+        return root.source != "curseforge";
+    }
+
+    VerticalLayout {
+        padding: Tokens.page-padding;
+        spacing: 12px;
+
+        // ── 筛选（两行）──
+        VerticalLayout {
+            spacing: 8px;
+            horizontal-stretch: 0;
+
+            // 第一行：搜索 / 排序 / 来源 / 结果数
+            HorizontalLayout {
+                height: 28px;
+                spacing: 12px;
+                cross-axis-alignment: center;
+
+                SearchField {
+                    compact: true;
+                    field-width: 360px;
+                    text <=> root.query;
+                    placeholder: root.search-placeholder();
+                    edited(value) => {
+                        root.search-resources(value, root.category, root.sort, root.resource-mc, root.source, root.resource-loader, root.resource-env, 1);
+                    }
+                }
+
+                Button {
+                    text: root.sort-label();
+                    variant: ButtonVariant.Secondary;
+                    size: ButtonSize.Small;
+                    icon: 11;
+                    min-width: 100px;
+                    clicked => {
+                        let next = root.sort == "relevance"
+                            ? "downloads"
+                            : (root.sort == "downloads" ? "newest" : "relevance");
+                        root.search-resources(root.query, root.category, next, root.resource-mc, root.source, root.resource-loader, root.resource-env, 1);
+                    }
+                }
+
+                Segmented {
+                    items: ["全部", "Modrinth", "CurseForge"];
+                    current: root.source-index();
+                    select(index) => {
+                        root.set-source(index == 2 ? "curseforge" : index == 1 ? "modrinth" : "all");
+                    }
+                }
+
+                Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                Text {
+                    text: root.hint;
+                    font-size: Tokens.font-micro;
+                    color: Tokens.text-secondary;
+                    vertical-alignment: center;
+                    horizontal-stretch: 0;
+                    overflow: elide;
+                }
+            }
+
+            // 第二行：游戏版本 / 加载器 / 环境 / 重置
+            HorizontalLayout {
+                height: 28px;
+                spacing: 12px;
+                cross-axis-alignment: center;
+
+                // 「游戏版本（全部）」选择器，不是输入框
+                mc-field := FilterField {
+                    text: root.mc-label();
+                    field-width: 160px;
+                    clicked => {
+                        root.mc-menu-x = mc-field.absolute-position.x;
+                        root.mc-menu-y = mc-field.absolute-position.y + 30px;
+                        mc-menu.show();
+                    }
+                }
+
+                loader-field := FilterField {
+                    text: root.loader-label();
+                    field-width: 140px;
+                    clicked => {
+                        root.loader-menu-x = loader-field.absolute-position.x;
+                        root.loader-menu-y = loader-field.absolute-position.y + 30px;
+                        loader-menu.show();
+                    }
+                }
+
+                env-field := FilterField {
+                    text: root.env-label();
+                    field-width: 120px;
+                    interactive: root.env-enabled();
+                    clicked => {
+                        root.env-menu-x = env-field.absolute-position.x;
+                        root.env-menu-y = env-field.absolute-position.y + 30px;
+                        env-menu.show();
+                    }
+                }
+
+                reset-hit := Rectangle {
+                    width: reset-text.preferred-width;
+                    height: 28px;
+                    horizontal-stretch: 0;
+                    background: transparent;
+
+                    reset-text := Text {
+                        width: parent.width;
+                        height: parent.height;
+                        text: "重置筛选";
+                        font-size: 11.5px;
+                        color: Tokens.primary;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+
+                    TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.resource-mc = "";
+                            root.resource-loader = "";
+                            root.resource-env = "";
+                            root.search-resources(root.query, root.category, root.sort, "", root.source, "", "", 1);
+                        }
+                    }
+                }
+
+                Rectangle { horizontal-stretch: 1; background: transparent; }
+            }
+        }
+
+        // ── 列表 + 页码 ──
+        Card {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                width: 100%;
+                height: 100%;
+
+                ScrollView {
+                    vertical-stretch: 1;
+                    viewport-width: self.width;
+
+                    VerticalLayout {
+                        padding-top: 8px;
+                        padding-bottom: 8px;
+
+                        for card in root.cards : Rectangle {
+                            height: 100px;
+
+                            Rectangle {
+                                y: parent.height - 1px;
+                                x: 24px;
+                                width: parent.width - 48px;
+                                height: 1px;
+                                background: Tokens.divider-row;
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 24px;
+                                padding-right: 16px;
+                                spacing: 16px;
+                                cross-axis-alignment: center;
+
+                                // 48px 真实图标（加载失败回落类目占位）
+                                Rectangle {
+                                    width: 48px;
+                                    height: 48px;
+                                    border-radius: 10px;
+                                    background: Tokens.nav-card;
+                                    clip: true;
+
+                                    if card.has-icon : Image {
+                                        width: 100%;
+                                        height: 100%;
+                                        source: card.icon;
+                                        image-fit: cover;
+                                    }
+
+                                    if !card.has-icon : Icon {
+                                        kind: card.kind == 3 ? 22 : (card.kind == 2 ? 4 : (card.kind == 4 ? 2 : 21));
+                                        icon-size: 22px;
+                                        weight: 1.4px;
+                                        icon-color: Tokens.text-secondary;
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    spacing: 4px;
+
+                                    Text {
+                                        text: card.name;
+                                        font-size: 14px;
+                                        font-weight: 600;
+                                        color: Tokens.text;
+                                        height: 20px;
+                                        vertical-alignment: bottom;
+                                        overflow: elide;
+                                    }
+
+                                    Text {
+                                        text: card.summary;
+                                        font-size: 11.5px;
+                                        color: Tokens.text-secondary;
+                                        height: 17px;
+                                        overflow: elide;
+                                    }
+
+                                    Text {
+                                        text: card.tags + "  ·  ↓ " + card.downloads;
+                                        font-size: 11px;
+                                        color: Tokens.text-secondary;
+                                        height: 16px;
+                                        overflow: elide;
+                                    }
+                                }
+
+                                Button {
+                                    text: "安装";
+                                    variant: ButtonVariant.Secondary;
+                                    size: ButtonSize.Small;
+                                    min-width: 88px;
+                                    clicked => { root.install-resource(card.id, card.kind); }
+                                }
+
+                                Icon {
+                                    width: 16px;
+                                    height: 16px;
+                                    kind: 11;
+                                    icon-size: 16px;
+                                    weight: 1.5px;
+                                    icon-color: #C7CBD1;
+                                }
+                            }
+
+                            row-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.open-resource(card.id, card.kind); }
+                            }
+                        }
+                    }
+                }
+
+                // 页码行：文案与页码由 Rust 侧 paging 统一生成
+                Pager {
+                    state: root.pager;
+                    divider-inset: 0px;
+                    padding-x: 24px;
+                    goto(page) => { root.goto-resource-page(page); }
+                }
+            }
+        }
+    }
+
+    mc-menu := Menu {
+        px: root.mc-menu-x;
+        py: root.mc-menu-y;
+        menu-width: 160px;
+        entries: root.mc-choices;
+        entry-selected(value) => {
+            root.resource-mc = value == "全部" ? "" : value;
+            root.search-resources(root.query, root.category, root.sort, value == "全部" ? "" : value, root.source, root.resource-loader, root.resource-env, 1);
+        }
+    }
+
+    loader-menu := Menu {
+        px: root.loader-menu-x;
+        py: root.loader-menu-y;
+        menu-width: 140px;
+        entries: ["全部", "Fabric", "Forge", "NeoForge", "Quilt"];
+        entry-selected(value) => {
+            root.resource-loader = value == "全部" ? "" : value;
+            root.search-resources(root.query, root.category, root.sort, root.resource-mc, root.source, value == "全部" ? "" : value, root.resource-env, 1);
+        }
+    }
+
+    env-menu := Menu {
+        px: root.env-menu-x;
+        py: root.env-menu-y;
+        menu-width: 120px;
+        entries: ["全部", "客户端", "服务端"];
+        entry-selected(value) => {
+            root.resource-env = value == "全部" ? "" : value;
+            root.search-resources(root.query, root.category, root.sort, root.resource-mc, root.source, root.resource-loader, value == "全部" ? "" : value, 1);
+        }
+    }
+}
+

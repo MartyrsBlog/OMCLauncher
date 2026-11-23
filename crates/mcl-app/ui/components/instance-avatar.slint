@@ -1,0 +1,35 @@
+import { Tokens } from "../theme.slint";
+
+// 实例图标：有图用图（contain），无图时用实例名首字占位。
+// 尺寸由调用方给；圆角随尺寸走（32 → 8，48+ → 12）。
+export component InstanceAvatar inherits Rectangle {
+    in property <image> source;
+    in property <bool> has-image: false;
+    in property <string> fallback: "";
+    in property <length> avatar-size: 32px;
+
+    width: root.avatar-size;
+    height: root.avatar-size;
+    horizontal-stretch: 0;
+    border-radius: root.avatar-size >= 48px ? 12px : 8px;
+    background: Tokens.surface-muted;
+    border-width: 1px;
+    border-color: Tokens.border;
+    clip: true;
+
+    if root.has-image : Image {
+        width: 100%;
+        height: 100%;
+        source: root.source;
+        image-fit: contain;
+    }
+
+    if !root.has-image : Text {
+        text: root.fallback;
+        font-size: root.avatar-size >= 48px ? 20px : 13px;
+        font-weight: 600;
+        color: Tokens.text-secondary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}

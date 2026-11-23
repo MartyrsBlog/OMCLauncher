@@ -1,0 +1,61 @@
+import { Tokens } from "../theme.slint";
+import { ListView } from "std-widgets.slint";
+
+// 日志视图：等宽字体、逐行裁切（长行不换行，避免撑破布局）。
+export component LogView inherits Rectangle {
+    in property <[string]> lines;
+    in property <string> empty-text: "暂无日志";
+    in property <bool> dark: false;
+
+    border-radius: 10px;
+    background: root.dark ? Tokens.on-dark-surface : Tokens.canvas;
+    border-width: 1px;
+    border-color: root.dark ? Tokens.on-dark-card : Tokens.border;
+    clip: true;
+
+    if root.lines.length == 0 : Text {
+        text: root.empty-text;
+        font-size: Tokens.font-caption;
+        color: root.dark ? #6B727C : Tokens.text-tertiary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        wrap: word-wrap;
+    }
+
+    if root.lines.length > 0 : ListView {
+        for line[index] in root.lines : Rectangle {
+            height: root.dark ? 42px : 18px;
+            background: transparent;
+
+            if root.dark : Rectangle {
+                y: parent.height - 1px;
+                x: 12px;
+                width: parent.width - 24px;
+                height: 1px;
+                background: Tokens.on-dark-card;
+            }
+
+            if root.dark : Text {
+                x: 12px;
+                width: 32px;
+                height: parent.height;
+                text: index + 1;
+                font-size: 10.5px;
+                color: #6B727C;
+                vertical-alignment: center;
+            }
+
+            Text {
+                x: root.dark ? 36px : 12px;
+                width: parent.width - self.x - 12px;
+                height: parent.height;
+                text: line;
+                font-size: root.dark ? 11px : 11px;
+                font-family: "monospace";
+                color: root.dark ? #B9C0CA : Tokens.text-secondary;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}

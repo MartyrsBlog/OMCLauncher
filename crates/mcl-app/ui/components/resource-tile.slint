@@ -1,0 +1,128 @@
+import { Tokens } from "../theme.slint";
+import { ResourceCard } from "../models.slint";
+import { Button, ButtonSize, ButtonVariant } from "./button.slint";
+import { Badge, BadgeTone } from "./badge.slint";
+import { Card } from "./card.slint";
+import { Icon } from "./icon.slint";
+
+// 资源卡片（资源中心双列网格）：图标 + 标题 + 下载量 + 摘要 + 标签 + 安装
+export component ResourceTile inherits Rectangle {
+    in property <ResourceCard> data;
+
+    callback open();
+    callback install();
+
+    height: 196px;
+    background: transparent;
+
+    // 整卡可点开详情；按钮在其后声明，仍优先接收点击
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => { root.open(); }
+    }
+
+    Card {
+        width: 100%;
+        height: 100%;
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 0;
+
+            HorizontalLayout {
+                height: 44px;
+                spacing: 12px;
+
+                // 封面：远程图标（Modrinth CDN）优先，未到达/失败时回落类目图标
+                Rectangle {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 12px;
+                    clip: true;
+                    background: data.kind == 3 ? Tokens.warning-soft : (data.kind == 4 ? Tokens.success-soft : Tokens.primary-soft);
+
+                    if data.has-icon : Image {
+                        width: 100%;
+                        height: 100%;
+                        source: data.icon;
+                        image-fit: cover;
+                    }
+
+                    if !data.has-icon : Icon {
+                        kind: data.kind == 3 ? 22 : (data.kind == 4 ? 4 : (data.kind == 2 ? 21 : 2));
+                        icon-size: 22px;
+                        weight: 1.6px;
+                        icon-color: data.kind == 3 ? Tokens.warning : (data.kind == 4 ? Tokens.success : Tokens.primary);
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+                }
+
+                VerticalLayout {
+                    padding-top: 1px;
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+
+                    Text {
+                        text: data.name;
+                        font-size: 18px;
+                        font-weight: 600;
+                        color: Tokens.text;
+                        height: 24px;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        text: data.downloads + " 下载";
+                        font-size: Tokens.font-caption;
+                        color: Tokens.text-secondary;
+                        height: 17px;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            Rectangle { height: 12px; background: transparent; }
+
+            Text {
+                text: data.summary;
+                font-size: Tokens.font-caption;
+                color: Tokens.text-secondary;
+                height: 36px;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+
+            Rectangle { vertical-stretch: 1; background: transparent; }
+
+            HorizontalLayout {
+                height: 32px;
+                spacing: 12px;
+
+                Text {
+                    text: data.tags;
+                    font-size: Tokens.font-micro;
+                    color: Tokens.text-tertiary;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+
+                if data.installed : Badge {
+                    text: "已安装";
+                    tone: BadgeTone.Neutral;
+                }
+
+                if !data.installed : Button {
+                    text: "安装";
+                    variant: ButtonVariant.Primary;
+                    size: ButtonSize.Small;
+                    min-width: 76px;
+                    clicked => { root.install(); }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,81 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mcl-core",
+    "crates/mcl-app-model",
+    "crates/mcl-app",
+    "crates/mcl-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+# Slint 1.17 要求 rustc >= 1.92
+rust-version = "1.92"
+# 许可证（2026-11-02 决策）：GPLv3 开源路线，与 Slint 的 GPL-3.0-only 授权兼容。
+# 说明：AboutSlint 署名是 Slint 免版税闭源许可的义务；GPLv3 路线下不强制，
+# 但「关于」页仍保留致谢（见 docs/UI设计文档.md §7.6）。
+license = "GPL-3.0-only"
+
+[workspace.dependencies]
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tokio = { version = "1", features = [
+    "rt",
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "time",
+    "process",
+    "fs",
+    "io-util",
+] }
+tracing = "0.1"
+# 只保留文件输出需要的 fmt/std：默认特性会带入 ansi、tracing-log、nu-ansi-term
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+slint = { version = "1", default-features = false, features = [
+    "std",
+    "backend-winit",
+    "renderer-femtovg",
+    "renderer-software",
+    "accessibility",
+    "compat-1-2",
+] }
+slint-build = "1"
+# 系统文件对话框：Windows IFileOpenDialog / macOS NSOpenPanel / Linux GTK3
+rfd = "0.15"
+# M0 PoC 起引入（下载引擎与安装流水线）
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "json",
+    "stream",
+    "gzip",
+    "http2",
+] }
+sha1 = "0.10"
+# 只保留 jar / .mrpack 需要的 deflate 解压：默认特性会拉入 zstd/bzip2/lzma/xz/aes/time，
+# 静态链接后让 Linux release 产物明显变大。用系统 zlib 后端（不引入仅压缩优化用的 zopfli）。
+zip = { version = "2", default-features = false, features = ["deflate-zlib"] }
+# 系统钥匙串：Windows Credential Manager / macOS Keychain / Linux secret-service
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+
+# dev 构建：依赖全量优化（Slint 的布局/渲染/文本整形在依赖里），自身 crate 保持轻量。
+[profile.dev]
+opt-level = 1
+# 关闭增量编译：rustc 增量 + lld 偶发 "undefined hidden symbol"
+# （同一个 crate 的泛型实例被拆到不同 CGU，增量复用后符号丢失）。
+# 代价是首次编译稍慢，但避免了随机链接失败与十几 GB 的 incremental 目录。
+incremental = false
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# 包体积优先（NFR-PER：Linux ≤15MB / Windows ≤20MB / macOS ≤25MB）
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

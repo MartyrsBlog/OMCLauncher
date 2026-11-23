@@ -1,0 +1,162 @@
+import { Tokens } from "../theme.slint";
+import { Icon } from "../components/icon.slint";
+import { ToolbarAction } from "../models.slint";
+
+// 整页替换后各页的导航下沉为页面自己的 200px 左列（`shell/page-rail.slint`），
+// 工具栏不再承载分段标签。
+export component ContextBar inherits Rectangle {
+    in property <string> title;
+    // 子级（如实例名 / 资源名），空则不显示
+    in property <string> subject: "";
+    // 当前实例胶囊，如 "生存世界 · 1.20.1"；空则不显示
+    in property <string> instance-label: "";
+    // 整页替换的页面显示左上返回箭头（首页没有）
+    in property <bool> show-back: false;
+    // 右侧动作（页面提供；空 = 只显示实例胶囊）
+    in property <[ToolbarAction]> actions: [];
+
+    callback back();
+    // 动作点击：回传 ToolbarAction.id
+    callback action(string);
+
+    height: Tokens.toolbar-height;
+    background: Tokens.surface;
+
+    Rectangle {
+        y: parent.height - 1px;
+        width: parent.width;
+        height: 1px;
+        background: Tokens.border;
+    }
+
+    HorizontalLayout {
+        height: Tokens.toolbar-height;
+        padding-left: root.show-back ? 12px : 24px;
+        padding-right: 16px;
+        // 48 - 28 = 20，上下各 10 让所有控件垂直居中
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 0px;
+
+        if root.show-back : Rectangle {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            background: back-touch.has-hover ? Tokens.canvas : transparent;
+
+            Icon {
+                kind: 12;
+                icon-size: 17px;
+                icon-color: Tokens.text;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+
+            back-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.back(); }
+            }
+        }
+
+        if root.show-back : Rectangle { width: 4px; background: transparent; }
+
+        Text {
+            height: 28px;
+            text: root.title;
+            font-size: 13px;
+            font-weight: 600;
+            color: Tokens.text;
+            vertical-alignment: center;
+            horizontal-stretch: 0;
+            overflow: elide;
+        }
+
+        if root.subject != "" : Rectangle { width: 12px; background: transparent; }
+
+        if root.subject != "" : Text {
+            height: 28px;
+            text: "·  " + root.subject;
+            font-size: 12px;
+            color: Tokens.text-secondary;
+            vertical-alignment: center;
+            horizontal-stretch: 0;
+            overflow: elide;
+        }
+
+        Rectangle { horizontal-stretch: 1; background: transparent; }
+
+        // 间距 8、右内边距 16，与胶囊同排。
+        if root.actions.length > 0 && root.instance-label != "" : Rectangle {
+            width: 12px;
+            background: transparent;
+        }
+
+        // 每个动作外包一层：首个不加左距，其余 8px（布局里不能用 x 定位）
+        for item[index] in root.actions : HorizontalLayout {
+            padding-left: index == 0 ? 0px : 8px;
+
+            Rectangle {
+                height: 28px;
+                width: item.icon-only ? 28px : 104px;
+                border-radius: 7px;
+                background: item.primary
+                    ? (action-touch.has-hover ? Tokens.primary-hover : Tokens.primary)
+                    : (action-touch.has-hover ? Tokens.canvas : Tokens.surface);
+                border-width: item.primary ? 0px : 1px;
+                border-color: Tokens.border-strong;
+
+                HorizontalLayout {
+                    padding-left: item.icon-only ? 0px : 12px;
+                    padding-right: item.icon-only ? 0px : 12px;
+                    spacing: 6px;
+                    cross-axis-alignment: center;
+
+                    if item.icon > 0 : Icon {
+                        kind: item.icon;
+                        icon-size: 15px;
+                        weight: 1.6px;
+                        icon-color: item.primary ? Tokens.text-inverse : Tokens.text;
+                    }
+
+                    if !item.icon-only : Text {
+                        text: item.label;
+                        font-size: 12.5px;
+                        color: item.primary ? Tokens.text-inverse : Tokens.text;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                }
+
+                action-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.action(item.id); }
+                }
+            }
+        }
+
+        if root.instance-label != "" : Rectangle {
+            height: 28px;
+            horizontal-stretch: 0;
+            border-radius: 14px;
+            background: Tokens.control-track;
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 12px;
+                spacing: 4px;
+                cross-axis-alignment: center;
+
+                Icon { kind: 2; icon-size: 14px; icon-color: Tokens.text-secondary; weight: 1.3px; }
+
+                Text {
+                    text: root.instance-label;
+                    font-size: 11.5px;
+                    color: Tokens.text-cell;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}

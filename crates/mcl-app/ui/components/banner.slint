@@ -1,0 +1,90 @@
+import { Tokens } from "../theme.slint";
+import { Icon } from "./icon.slint";
+import { LinkText } from "./link.slint";
+
+export enum BannerTone {
+    Info,
+    Warning,
+    Danger,
+}
+
+// 页面内提示条：信息（浅蓝）/ 危险（浅红），可带操作链接与关闭按钮。
+export component Banner inherits Rectangle {
+    in property <string> text;
+    in property <BannerTone> tone: BannerTone.Info;
+    in property <string> action-text: "";
+    in property <bool> closable: false;
+    // 多行模式：高度随内容增长（日志诊断用）
+    in property <bool> multiline: false;
+
+    callback action();
+    callback closed();
+
+    height: root.multiline ? self.preferred-height : 48px;
+    border-radius: Tokens.radius-sm;
+    background: root.tone == BannerTone.Danger
+        ? Tokens.danger-soft
+        : root.tone == BannerTone.Warning ? Tokens.warning-soft : Tokens.info-soft;
+    border-width: 1px;
+    border-color: root.tone == BannerTone.Danger
+        ? #F3C9C9
+        : root.tone == BannerTone.Warning ? #EFDCB9 : #D6E6F7;
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 12px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 10px;
+
+        Icon {
+            kind: root.tone == BannerTone.Info ? 18 : 14;
+            icon-size: 16px;
+            weight: 1.8px;
+            icon-color: root.tone == BannerTone.Danger
+                ? Tokens.danger
+                : root.tone == BannerTone.Warning ? Tokens.warning : Tokens.primary;
+        }
+
+        Text {
+            text: root.text;
+            font-size: Tokens.font-caption;
+            color: root.tone == BannerTone.Danger
+                ? Tokens.danger
+                : root.tone == BannerTone.Warning ? Tokens.text : Tokens.text;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            wrap: root.multiline ? word-wrap : no-wrap;
+            overflow: elide;
+        }
+
+        if root.action-text != "" : LinkText {
+            text: root.action-text;
+            link-color: root.tone == BannerTone.Danger ? Tokens.danger : Tokens.primary;
+            clicked => { root.action(); }
+        }
+
+        if root.closable : Rectangle {
+            width: 24px;
+            height: 24px;
+            border-radius: 12px;
+            background: close-touch.has-hover ? #00000010 : transparent;
+
+            Icon {
+                kind: 10;
+                icon-size: 13px;
+                weight: 1.8px;
+                icon-color: root.tone == BannerTone.Danger ? Tokens.danger : Tokens.text-secondary;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+
+            close-touch := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                clicked => { root.closed(); }
+            }
+        }
+    }
+}

@@ -1,0 +1,202 @@
+import { Tokens } from "../theme.slint";
+import { VersionRow } from "../models.slint";
+import { Card } from "../components/card.slint";
+import { Icon } from "../components/icon.slint";
+import { SearchField } from "../components/search-field.slint";
+import { Segmented } from "../components/segmented.slint";
+import { ListView } from "std-widgets.slint";
+
+// 右侧安装卡已删除（配置移到路由 9 的安装页）。
+export component VersionsPage inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    in property <[VersionRow]> versions;
+    // release / snapshot / all
+    in property <string> filter: "release";
+    in property <string> count-hint: "";
+    // 当前实例的游戏版本（行高亮）
+    in property <string> installed-mc: "";
+    in-out property <string> query: "";
+
+    callback set-filter(string);
+    callback set-query(string);
+    callback open-install(string);
+
+    background: transparent;
+
+    // 分段控件的下标 ←→ filter 语义（只在 UI 侧映射）
+    pure function filter-index() -> int {
+        if (root.filter == "snapshot") { return 1; }
+        if (root.filter == "all") { return 2; }
+        return 0;
+    }
+
+    pure function version-kind-label(kind: string) -> string {
+        if (kind == "snapshot") { return "快照"; }
+        if (kind == "release") { return "正式版"; }
+        return "旧版";
+    }
+
+    VerticalLayout {
+        padding: Tokens.page-padding;
+        spacing: Tokens.space-4;
+
+        // ── 工具行：搜索 + 类型 + 计数 ──
+        HorizontalLayout {
+            height: 28px;
+            spacing: Tokens.space-4;
+
+            SearchField {
+                compact: true;
+                field-width: 300px;
+                text <=> root.query;
+                placeholder: "搜索版本号";
+                edited(value) => { root.set-query(value); }
+            }
+
+            Segmented {
+                items: ["正式版", "快照", "全部"];
+                current: root.filter-index();
+                select(index) => {
+                    root.set-filter(index == 1 ? "snapshot" : index == 2 ? "all" : "release");
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+
+            Text {
+                text: root.count-hint;
+                font-size: Tokens.font-micro;
+                color: Tokens.text-secondary;
+                vertical-alignment: center;
+                horizontal-stretch: 0;
+                overflow: elide;
+            }
+        }
+
+        // ── 版本表 ──
+        Card {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+
+                // 列头 44px
+                HorizontalLayout {
+                    height: 44px;
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 0;
+
+                    Text {
+                        text: "版本";
+                        width: 446px;
+                        font-size: Tokens.font-micro;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: "类型";
+                        width: 150px;
+                        font-size: Tokens.font-micro;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: "发布日期";
+                        horizontal-stretch: 1;
+                        font-size: Tokens.font-micro;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { width: 16px; background: transparent; }
+                }
+
+                Rectangle {
+                    x: 16px;
+                    width: parent.width - 32px;
+                    height: 1px;
+                    background: Tokens.divider-row;
+                }
+
+                if root.versions.length == 0 : Text {
+                    text: root.count-hint == "" ? "正在获取版本清单…" : "没有匹配的版本，换个关键词试试。";
+                    font-size: Tokens.font-label;
+                    color: Tokens.text-tertiary;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                ListView {
+                    vertical-stretch: 1;
+                    vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+
+                    for version in root.versions : Rectangle {
+                        height: 40px;
+                        border-radius: 6px;
+                        background: version.id == root.installed-mc
+                            ? Tokens.primary-soft
+                            : row-touch.has-hover ? Tokens.surface-hover : transparent;
+
+                        Rectangle {
+                            y: parent.height - 1px;
+                            x: 16px;
+                            width: parent.width - 32px;
+                            height: 1px;
+                            background: Tokens.divider-row;
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 16px;
+                            padding-right: 12px;
+                            spacing: 0;
+
+                            Text {
+                                text: version.name;
+                                width: 446px;
+                                font-size: 13.5px;
+                                font-weight: version.id == root.installed-mc ? 600 : 400;
+                                color: Tokens.text;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+
+                            Text {
+                                text: root.version-kind-label(version.kind);
+                                width: 150px;
+                                font-size: 11.5px;
+                                color: Tokens.text-secondary;
+                                vertical-alignment: center;
+                            }
+
+                            Text {
+                                text: version.info;
+                                horizontal-stretch: 1;
+                                font-size: 11.5px;
+                                color: Tokens.text-secondary;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+
+                            Icon {
+                                width: 16px;
+                                height: 16px;
+                                kind: 11;
+                                icon-size: 16px;
+                                weight: 1.5px;
+                                icon-color: version.id == root.installed-mc ? Tokens.primary : #C7CBD1;
+                            }
+                        }
+
+                        row-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.open-install(version.id); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

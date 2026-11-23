@@ -1,0 +1,858 @@
+import { Tokens } from "../theme.slint";
+import {
+    VersionsPageModel, ResourceVersionRow, DescriptionBlockRow, ResourceLinkRow,
+    ChangelogRow,
+} from "../models.slint";
+import { Button, ButtonSize, ButtonVariant } from "../components/button.slint";
+import { Card } from "../components/card.slint";
+import { Icon } from "../components/icon.slint";
+import { LinkText } from "../components/link.slint";
+import { Menu } from "../components/menu.slint";
+import { Pager } from "../components/pager.slint";
+import { Segmented } from "../components/segmented.slint";
+import { ScrollView } from "std-widgets.slint";
+
+// 880 居中列 = 头卡（150）+ 三标签 + 内容卡（≥580）。CurseForge 与 Modrinth 同构，
+// 差异只在统计行是否有关注数、外链按钮文案与更新日志来源。
+export component ResourceDetailPage inherits Rectangle {
+    width: 100%;
+    height: 100%;
+
+    in property <VersionsPageModel> page;
+    in property <[ResourceVersionRow]> versions;
+    in property <string> title;
+    in property <string> summary;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    // 「安装到生存服」
+    in property <string> target-label;
+    in property <string> site-url;
+    // 0 描述 / 1 更新日志 / 2 版本
+    in property <int> tab: 0;
+    in property <bool> loading: false;
+
+    callback back();
+    callback select-tab(int);
+    callback install-latest();
+    callback install-version(string);
+    callback open-url(string);
+    callback select-changelog(string);
+    callback select-version-type(string);
+    callback select-detail-mc(string);
+    callback select-detail-loader(string);
+    callback goto-version-page(int);
+
+    // 两个下拉的锚点（PopupWindow 用窗口坐标）
+    in-out property <length> type-menu-x: 0;
+    in-out property <length> type-menu-y: 0;
+    in-out property <length> log-menu-x: 0;
+    in-out property <length> log-menu-y: 0;
+    in-out property <length> mc-menu-x: 0;
+    in-out property <length> mc-menu-y: 0;
+    in-out property <length> loader-menu-x: 0;
+    in-out property <length> loader-menu-y: 0;
+
+    background: transparent;
+
+    pure function kind-label(kind: string) -> string {
+        if (kind == "") { return "release"; }
+        return kind;
+    }
+
+    pure function type-label(value: string) -> string {
+        if (value == "release") { return "正式版"; }
+        if (value == "beta") { return "测试版"; }
+        if (value == "alpha") { return "内测版"; }
+        return "全部";
+    }
+
+    ScrollView {
+        vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+        viewport-width: self.width;
+        viewport-height: body.preferred-height;
+
+        body := VerticalLayout {
+            width: parent.width;
+            // 880 列居中：布局的 alignment 在不同嵌套下不可靠，直接算左右内边距
+            padding-left: (parent.width - 880px) / 2;
+            padding-right: (parent.width - 880px) / 2;
+            padding-top: 24px;
+            padding-bottom: 24px;
+            spacing: 18px;
+
+            // ═══ 头卡（880×150）═══
+            Card {
+                width: 880px;
+                height: 150px;
+
+                Rectangle {
+                    x: 24px;
+                    y: 24px;
+                    width: 80px;
+                    height: 80px;
+                    border-radius: 12px;
+                    background: Tokens.nav-card;
+                    clip: true;
+
+                    if root.has-icon : Image {
+                        x: 4px;
+                        y: 4px;
+                        width: parent.width - 8px;
+                        height: parent.height - 8px;
+                        source: root.icon;
+                        image-fit: contain;
+                    }
+
+                    if !root.has-icon : Icon {
+                        kind: 2;
+                        icon-size: 36px;
+                        weight: 1.4px;
+                        icon-color: Tokens.text-tertiary;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+                }
+
+                // 文本列宽 = 880 - 120（图标列）- 112（按钮）- 24 - 24
+                Text {
+                    x: 120px;
+                    y: 20px;
+                    width: parent.width - 280px;
+                    height: 32px;
+                    text: root.title;
+                    font-size: 22px;
+                    font-weight: 700;
+                    letter-spacing: -0.3px;
+                    color: Tokens.text;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                    overflow: elide;
+                }
+
+                Text {
+                    x: 120px;
+                    y: 52px;
+                    width: parent.width - 280px;
+                    height: 16px;
+                    text: root.summary;
+                    font-size: 11.5px;
+                    color: Tokens.text-cell;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                    overflow: elide;
+                }
+
+                Text {
+                    x: 120px;
+                    y: 74px;
+                    width: parent.width - 280px;
+                    height: 16px;
+                    text: root.page.detail-stats-line;
+                    font-size: Tokens.font-micro;
+                    color: Tokens.text-secondary;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                    overflow: elide;
+                }
+
+                Text {
+                    x: 120px;
+                    y: 96px;
+                    width: parent.width - 280px;
+                    height: 16px;
+                    text: root.page.detail-platform;
+                    font-size: Tokens.font-micro;
+                    color: Tokens.text-secondary;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                    overflow: elide;
+                }
+
+                Button {
+                    x: parent.width - 136px;
+                    y: 24px;
+                    width: 112px;
+                    height: 32px;
+                    text: root.target-label;
+                    variant: ButtonVariant.Primary;
+                    enabled: root.versions.length > 0;
+                    clicked => { root.install-latest(); }
+                }
+
+                Button {
+                    x: parent.width - 136px;
+                    y: 66px;
+                    width: 112px;
+                    height: 28px;
+                    text: root.page.detail-site-action;
+                    variant: ButtonVariant.Secondary;
+                    size: ButtonSize.Small;
+                    clicked => { root.open-url(root.site-url); }
+                }
+
+                Button {
+                    x: parent.width - 136px;
+                    y: 102px;
+                    width: 112px;
+                    height: 28px;
+                    text: "MC 百科";
+                    variant: ButtonVariant.Secondary;
+                    size: ButtonSize.Small;
+                    clicked => { root.open-url("https://search.mcmod.cn/s?key=" + root.title); }
+                }
+            }
+
+            // ═══ 三标签 ═══
+            Segmented {
+                width: 176px;
+                items: ["描述", "更新日志", "版本"];
+                current: root.tab;
+                select(index) => { root.select-tab(index); }
+            }
+
+            // ═══ 内容卡（≥580，随内容长高）═══
+            Rectangle {
+                width: 880px;
+                height: max(580px, tab-body.preferred-height);
+                border-radius: Tokens.radius-lg;
+                background: Tokens.surface;
+                border-width: 1px;
+                border-color: Tokens.border;
+                drop-shadow-color: Tokens.shadow-soft;
+                drop-shadow-offset-y: 1px;
+                drop-shadow-blur: 2px;
+                clip: true;
+
+                tab-body := VerticalLayout {
+                    width: 100%;
+
+                // ── 描述 ──
+                if root.tab == 0 : VerticalLayout {
+                    padding-left: 28px;
+                    padding-right: 28px;
+                    padding-top: 24px;
+                    padding-bottom: 24px;
+                    spacing: 10px;
+
+                    if root.page.detail-blocks.length == 0 : Text {
+                        text: root.loading ? "正在获取项目详情…" : "该项目没有提供描述。";
+                        font-size: Tokens.font-caption;
+                        color: Tokens.text-tertiary;
+                        height: 24px;
+                        vertical-alignment: center;
+                    }
+
+                    for block in root.page.detail-blocks : VerticalLayout {
+                        spacing: 0px;
+
+                        // 标题前留白
+                        if block.kind == "h1" || block.kind == "h2" : Rectangle {
+                            height: 10px;
+                            background: transparent;
+                        }
+
+                        if block.kind == "img" : Rectangle {
+                            width: parent.width;
+                            height: 240px;
+                            background: transparent;
+
+                            if block.has-image : Image {
+                                width: 100%;
+                                height: 100%;
+                                source: block.image;
+                                image-fit: contain;
+                            }
+
+                            if !block.has-image : Rectangle {
+                                width: 100%;
+                                height: 100%;
+                                border-radius: 8px;
+                                background: Tokens.canvas;
+
+                                Text {
+                                    text: "图片加载中…";
+                                    font-size: Tokens.font-micro;
+                                    color: Tokens.text-tertiary;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        if block.kind == "li" : HorizontalLayout {
+                            spacing: 12px;
+
+                            Rectangle {
+                                width: 12px;
+                                height: 16px;
+                                background: transparent;
+
+                                Rectangle {
+                                    x: 4px;
+                                    y: 6px;
+                                    width: 4px;
+                                    height: 4px;
+                                    border-radius: 2px;
+                                    background: Tokens.text-tertiary;
+                                }
+                            }
+
+                            Text {
+                                text: block.text;
+                                font-size: 11.5px;
+                                color: Tokens.text-cell;
+                                horizontal-stretch: 1;
+                                horizontal-alignment: left;
+                                wrap: word-wrap;
+                            }
+                        }
+
+                        if block.kind != "li" && block.kind != "img" : Text {
+                            text: block.text;
+                            font-size: block.kind == "h1" ? 18px
+                                : block.kind == "h2" ? 15px
+                                : block.kind == "code" ? 11px
+                                : 12.5px;
+                            font-family: block.kind == "code" ? "monospace" : "";
+                            font-weight: block.kind == "h1" ? 700
+                                : block.kind == "h2" ? 600
+                                : 400;
+                            color: block.kind == "h1" || block.kind == "h2"
+                                ? Tokens.text
+                                : block.kind == "code" ? Tokens.text-secondary : Tokens.text-cell;
+                            horizontal-alignment: left;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    // ── 链接 ──
+                    if root.page.detail-links.length > 0 : Rectangle {
+                        height: 1px;
+                        background: Tokens.divider-row;
+                    }
+
+                    if root.page.detail-links.length > 0 : Text {
+                        text: "链接";
+                        font-size: Tokens.font-caption;
+                        font-weight: 600;
+                        color: Tokens.text;
+                        height: 44px;
+                        vertical-alignment: bottom;
+                    }
+
+                    for link in root.page.detail-links : HorizontalLayout {
+                        height: 34px;
+                        spacing: 0px;
+
+                        Text {
+                            width: 64px;
+                            height: parent.height;
+                            text: link.label;
+                            font-size: Tokens.font-micro;
+                            color: Tokens.text-secondary;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                        }
+
+                        LinkText {
+                            text: link.url;
+                            clicked => { root.open-url(link.url); }
+                        }
+
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                    }
+                }
+
+                // ── 更新日志 ──
+                if root.tab == 1 : VerticalLayout {
+                    padding-left: 28px;
+                    padding-right: 28px;
+                    padding-top: 24px;
+                    padding-bottom: 24px;
+                    spacing: 0px;
+
+                    Text {
+                        text: "版本";
+                        font-size: Tokens.font-micro;
+                        color: Tokens.text-secondary;
+                        height: 14px;
+                        horizontal-alignment: left;
+                    }
+
+                    Rectangle { height: 4px; background: transparent; }
+
+                    // 版本下拉 + 日期类型 + 站点链接（用布局排，避免绝对定位在不同宽度下错位）
+                    HorizontalLayout {
+                        height: 28px;
+                        spacing: 16px;
+
+                        Rectangle {
+                            width: 240px;
+                            height: 28px;
+                            border-radius: 6px;
+                            background: Tokens.surface;
+                            border-width: 1px;
+                            border-color: Tokens.border-strong;
+
+                            Text {
+                                x: 10px;
+                                width: parent.width - 34px;
+                                height: parent.height;
+                                text: root.page.changelog-version;
+                                font-size: 11.5px;
+                                color: Tokens.text;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                                overflow: elide;
+                            }
+
+                            Icon {
+                                kind: 27;
+                                icon-size: 12px;
+                                weight: 1.6px;
+                                icon-color: Tokens.text-secondary;
+                                x: parent.width - 22px;
+                                y: (parent.height - self.height) / 2;
+                            }
+
+                            log-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.log-menu-x = log-touch.absolute-position.x;
+                                    root.log-menu-y = log-touch.absolute-position.y + 30px;
+                                    log-menu.show();
+                                }
+                            }
+                        }
+
+                        Text {
+                            height: 28px;
+                            text: root.page.changelog-date
+                                + (root.page.changelog-kind == "" ? "" : " · " + root.page.changelog-kind);
+                            font-size: 11.5px;
+                            color: Tokens.text-secondary;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            horizontal-stretch: 0;
+                        }
+
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                        if root.page.detail-source-label != "" : LinkText {
+                            text: root.page.detail-source-label;
+                            clicked => { root.open-url(root.site-url); }
+                        }
+                    }
+
+                    Rectangle { height: 12px; background: transparent; }
+                    Rectangle { height: 1px; background: Tokens.divider-row; }
+                    Rectangle { height: 16px; background: transparent; }
+
+                    if root.page.changelog-lines.length == 0 : Text {
+                        text: root.page.changelog-empty;
+                        font-size: 11.5px;
+                        color: Tokens.text-tertiary;
+                        height: 22px;
+                        horizontal-alignment: left;
+                    }
+
+                    for line in root.page.changelog-lines : Text {
+                        text: line;
+                        font-size: 11.5px;
+                        color: Tokens.text-cell;
+                        horizontal-alignment: left;
+                        wrap: word-wrap;
+                    }
+
+                    Rectangle { height: 24px; background: transparent; }
+
+                    Text {
+                        text: "更早的版本";
+                        font-size: Tokens.font-caption;
+                        font-weight: 600;
+                        color: Tokens.text;
+                        height: 20px;
+                        horizontal-alignment: left;
+                    }
+
+                    Rectangle { height: 4px; background: transparent; }
+
+                    for row in root.page.changelog-earlier : Rectangle {
+                        height: 54px;
+                        background: transparent;
+
+                        Rectangle {
+                            y: parent.height - 1px;
+                            width: parent.width;
+                            height: 1px;
+                            background: Tokens.divider-row;
+                        }
+
+                        Text {
+                            x: 0px;
+                            y: 16px;
+                            width: 132px;
+                            height: 20px;
+                            text: row.version;
+                            font-size: 11.5px;
+                            font-weight: 500;
+                            color: Tokens.text;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            x: 142px;
+                            y: 16px;
+                            width: 100px;
+                            height: 20px;
+                            text: row.date;
+                            font-size: Tokens.font-micro;
+                            color: Tokens.text-secondary;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                        }
+
+                        Text {
+                            x: 252px;
+                            y: 16px;
+                            width: parent.width - 252px;
+                            height: 20px;
+                            text: row.summary;
+                            font-size: Tokens.font-micro;
+                            color: Tokens.text-cell;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            overflow: elide;
+                        }
+
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.select-changelog(row.id); }
+                        }
+                    }
+                }
+
+                // ── 版本 ──
+                if root.tab == 2 : VerticalLayout {
+                    padding-left: 24px;
+                    padding-right: 24px;
+                    padding-top: 20px;
+                    padding-bottom: 40px;
+                    spacing: 0px;
+
+                    // 过滤行：游戏版本 / 加载器来自实例；类型可选
+                    Rectangle {
+                        height: 64px;
+                        background: transparent;
+
+                        Text {
+                            x: 10px;
+                            y: 10px;
+                            text: "游戏版本";
+                            font-size: Tokens.font-micro;
+                            color: Tokens.text-secondary;
+                            height: 14px;
+                        }
+                        Rectangle {
+                            x: 4px;
+                            y: 26px;
+                            width: 130px;
+                            height: 24px;
+                            border-radius: 6px;
+                            background: mc-touch.has-hover ? Tokens.surface-hover : transparent;
+
+                            Text {
+                                x: 6px;
+                                height: parent.height;
+                                text: root.page.detail-mc == "" ? "全部" : root.page.detail-mc;
+                                font-size: 11.5px;
+                                color: Tokens.text;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                            }
+
+                            Icon {
+                                kind: 27;
+                                icon-size: 12px;
+                                weight: 1.6px;
+                                icon-color: Tokens.text-secondary;
+                                x: parent.width - 18px;
+                                y: (parent.height - self.height) / 2;
+                            }
+
+                            mc-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.mc-menu-x = mc-touch.absolute-position.x;
+                                    root.mc-menu-y = mc-touch.absolute-position.y + 26px;
+                                    mc-menu.show();
+                                }
+                            }
+                        }
+
+                        Text {
+                            x: 150px;
+                            y: 10px;
+                            text: "加载器";
+                            font-size: Tokens.font-micro;
+                            color: Tokens.text-secondary;
+                            height: 14px;
+                        }
+                        Rectangle {
+                            x: 144px;
+                            y: 26px;
+                            width: 150px;
+                            height: 24px;
+                            border-radius: 6px;
+                            background: loader-touch.has-hover ? Tokens.surface-hover : transparent;
+
+                            Text {
+                                x: 6px;
+                                height: parent.height;
+                                text: root.page.detail-loader == "" ? "全部" : root.page.detail-loader;
+                                font-size: 11.5px;
+                                color: Tokens.text;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                            }
+
+                            Icon {
+                                kind: 27;
+                                icon-size: 12px;
+                                weight: 1.6px;
+                                icon-color: Tokens.text-secondary;
+                                x: parent.width - 18px;
+                                y: (parent.height - self.height) / 2;
+                            }
+
+                            loader-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.loader-menu-x = loader-touch.absolute-position.x;
+                                    root.loader-menu-y = loader-touch.absolute-position.y + 26px;
+                                    loader-menu.show();
+                                }
+                            }
+                        }
+
+                        Text {
+                            x: 312px;
+                            y: 10px;
+                            text: "类型";
+                            font-size: Tokens.font-micro;
+                            color: Tokens.text-secondary;
+                            height: 14px;
+                        }
+
+                        Rectangle {
+                            x: 302px;
+                            y: 27px;
+                            width: 96px;
+                            height: 24px;
+                            border-radius: 6px;
+                            background: type-touch.has-hover ? Tokens.surface-hover : transparent;
+
+                            Text {
+                                x: 10px;
+                                height: parent.height;
+                                text: root.type-label(root.page.version-type);
+                                font-size: 11.5px;
+                                color: Tokens.text;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                            }
+
+                            Icon {
+                                kind: 27;
+                                icon-size: 12px;
+                                weight: 1.6px;
+                                icon-color: Tokens.text-secondary;
+                                x: parent.width - 18px;
+                                y: (parent.height - self.height) / 2;
+                            }
+
+                            type-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.type-menu-x = type-touch.absolute-position.x;
+                                    root.type-menu-y = type-touch.absolute-position.y + 26px;
+                                    type-menu.show();
+                                }
+                            }
+                        }
+
+                        Text {
+                            x: parent.width - 120px;
+                            y: 10px;
+                            width: 120px;
+                            height: 34px;
+                            text: root.page.version-count-hint;
+                            font-size: Tokens.font-micro;
+                            color: Tokens.text-secondary;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Tokens.divider-row; }
+
+                    // 表头
+                    Rectangle {
+                        height: 30px;
+                        background: transparent;
+
+                        Text { x: 0px; y: 8px; text: "版本号"; font-size: Tokens.font-micro; color: Tokens.text-secondary; }
+                        Text { x: 306px; y: 8px; text: "游戏版本"; font-size: Tokens.font-micro; color: Tokens.text-secondary; }
+                        Text { x: 426px; y: 8px; text: "类型"; font-size: Tokens.font-micro; color: Tokens.text-secondary; }
+                        Text { x: 516px; y: 8px; text: "发布日期"; font-size: Tokens.font-micro; color: Tokens.text-secondary; }
+                        Text { x: 656px; y: 8px; text: "下载量"; font-size: Tokens.font-micro; color: Tokens.text-secondary; }
+                    }
+
+                    if root.versions.length == 0 : Text {
+                        text: root.loading ? "正在获取可用版本…" : "没有匹配当前实例的版本";
+                        font-size: Tokens.font-caption;
+                        color: Tokens.text-tertiary;
+                        height: 48px;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+
+                    for row in root.versions : Rectangle {
+                        height: 42px;
+                        background: row-touch.has-hover ? Tokens.surface-hover : transparent;
+
+                        Rectangle {
+                            y: parent.height - 1px;
+                            width: parent.width;
+                            height: 1px;
+                            background: Tokens.divider-row;
+                        }
+
+                        Text {
+                            x: 0px;
+                            width: 300px;
+                            height: parent.height;
+                            text: row.version;
+                            font-size: 11.5px;
+                            font-weight: 500;
+                            color: Tokens.text;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            overflow: elide;
+                        }
+                        Text {
+                            x: 306px;
+                            width: 110px;
+                            height: parent.height;
+                            text: row.game-version;
+                            font-size: Tokens.font-micro;
+                            color: Tokens.text-cell;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            overflow: elide;
+                        }
+                        Text {
+                            x: 426px;
+                            width: 80px;
+                            height: parent.height;
+                            text: root.kind-label(row.kind);
+                            font-size: Tokens.font-micro;
+                            color: Tokens.text-secondary;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                        }
+                        Text {
+                            x: 516px;
+                            width: 120px;
+                            height: parent.height;
+                            text: row.date;
+                            font-size: Tokens.font-micro;
+                            color: Tokens.text-secondary;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                        }
+                        Text {
+                            x: 656px;
+                            width: 120px;
+                            height: parent.height;
+                            text: row.downloads;
+                            font-size: Tokens.font-micro;
+                            color: Tokens.text-secondary;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                        }
+                        Text {
+                            x: parent.width - 44px;
+                            width: 44px;
+                            height: parent.height;
+                            text: "安装";
+                            font-size: 11.5px;
+                            color: Tokens.text;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+
+                        row-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.install-version(row.id); }
+                        }
+                    }
+
+                    Rectangle { height: 40px; background: transparent; }
+
+                    Pager {
+                        state: root.page.version-pager;
+                        divider-inset: 0px;
+                        padding-x: 0px;
+                        goto(page) => { root.goto-version-page(page); }
+                    }
+                }
+                }
+            }
+        }
+    }
+
+    // 更新日志的版本下拉（候选 = 当前 + 更早的版本）
+    log-menu := Menu {
+        px: root.log-menu-x;
+        py: root.log-menu-y;
+        menu-width: 240px;
+        entries: root.page.changelog-choices;
+        entry-selected(value) => { root.select-changelog(value); }
+    }
+
+    mc-menu := Menu {
+        px: root.mc-menu-x;
+        py: root.mc-menu-y;
+        menu-width: 160px;
+        entries: root.page.detail-mc-choices;
+        entry-selected(value) => {
+            root.select-detail-mc(value == "全部" ? "" : value);
+        }
+    }
+
+    loader-menu := Menu {
+        px: root.loader-menu-x;
+        py: root.loader-menu-y;
+        menu-width: 160px;
+        entries: root.page.detail-loader-choices;
+        entry-selected(value) => {
+            root.select-detail-loader(value == "全部" ? "" : value);
+        }
+    }
+
+    type-menu := Menu {
+        px: root.type-menu-x;
+        py: root.type-menu-y;
+        menu-width: 120px;
+        entries: ["全部", "正式版", "测试版", "内测版"];
+        entry-selected(value) => {
+            root.select-version-type(value == "正式版" ? "release"
+                : value == "测试版" ? "beta"
+                : value == "内测版" ? "alpha"
+                : "all");
+        }
+    }
+}

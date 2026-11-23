@@ -1,0 +1,527 @@
+import { Tokens } from "../theme.slint";
+import { InstanceRow, DirectoryItem, InstancesPageModel } from "../models.slint";
+import { Button, ButtonVariant } from "../components/button.slint";
+import { Card } from "../components/card.slint";
+import { InstanceAvatar } from "../components/instance-avatar.slint";
+import { SearchField } from "../components/search-field.slint";
+import { Icon } from "../components/icon.slint";
+import { EmptyState } from "../components/empty-state.slint";
+import { Checkbox } from "../components/checkbox.slint";
+import { Menu, MenuItem } from "../components/menu.slint";
+import { InstancesRail } from "../shell/instances-rail.slint";
+import { ListView } from "std-widgets.slint";
+
+export component InstancesPage inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    in property <[InstanceRow]> instances;
+    in property <InstancesPageModel> page;
+    in property <[DirectoryItem]> directories;
+    // 搜索词双向绑定（输入即过滤，过滤在 Rust 侧完成）
+    in-out property <string> query: "";
+
+    callback start-install();
+    callback open-instance(string);
+    callback refresh-instances();
+    callback scan-instances();
+    callback set-query(string);
+    callback set-filter(string);
+    callback set-view(string);
+    callback set-directory(string);
+    callback open-directories();
+    callback clear-filters();
+    callback pick-import();
+    callback launch-instance(string);
+    callback reveal-instance(string);
+    callback remove-instance(string);
+    callback toggle-select(string);
+    callback start-select(string);
+    callback cancel-select();
+    callback launch-selected();
+    callback export-selected();
+    callback remove-selected();
+
+    // 行尾菜单锚点（纯呈现态，留在页面组件里）
+    in-out property <string> menu-target: "";
+    in-out property <length> menu-x: 0;
+    in-out property <length> menu-y: 0;
+
+    background: transparent;
+
+    pure function status-color(tone: int) -> color {
+        if (tone == 1) { return Tokens.primary; }
+        if (tone == 2) { return Tokens.success; }
+        if (tone == 3) { return Tokens.warning; }
+        if (tone == 4) { return Tokens.danger; }
+        return Tokens.text-secondary;
+    }
+
+    HorizontalLayout {
+        InstancesRail {
+            directories: root.directories;
+            page: root.page;
+            set-directory(path) => { root.set-directory(path); }
+            set-view(value) => { root.set-view(value); }
+            set-filter(value) => { root.set-filter(value); }
+            open-directories() => { root.open-directories(); }
+        }
+
+        // ── 内容列 ──
+        VerticalLayout {
+            horizontal-stretch: 1;
+            padding: Tokens.page-padding;
+            spacing: 12px;
+
+            // 工具行：左侧搜索（320×28），右侧计数（动作在顶栏）
+            HorizontalLayout {
+                height: 28px;
+                spacing: 12px;
+
+                SearchField {
+                    field-width: 320px;
+                    compact: true;
+                    text <=> root.query;
+                    placeholder: "搜索实例名、版本或加载器";
+                    edited(value) => { root.set-query(value); }
+                }
+
+                Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                Text {
+                    text: root.page.count-hint;
+                    font-size: Tokens.font-micro;
+                    color: Tokens.text-tertiary;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                }
+            }
+
+            // 表格卡：列头 44 + 分隔线 + 88px 行
+            Card {
+                vertical-stretch: 1;
+                clip: true;
+
+                VerticalLayout {
+                    if root.instances.length == 0 : EmptyState {
+                        title: root.page.count-all == 0 ? "还没有实例" : "没有匹配的实例";
+                        hint: root.page.empty-hint;
+                        icon: 2;
+                        action-text: root.page.count-all == 0 ? "新建实例" : "清除筛选";
+                        action-text-2: root.page.count-all == 0 ? "导入整合包" : "";
+                        link-text: root.page.count-all == 0 ? "扫描本地目录" : "";
+                        action => {
+                            if (root.page.count-all == 0) {
+                                root.start-install();
+                            } else {
+                                root.clear-filters();
+                            }
+                        }
+                        action-2 => { root.pick-import(); }
+                        link => { root.scan-instances(); }
+                    }
+
+                    if root.instances.length > 0 : VerticalLayout {
+                        // 列头：与行同一套列宽（实例列弹性，其余定宽）
+                        Rectangle {
+                            height: 44px;
+
+                            HorizontalLayout {
+                                padding-left: 24px;
+                                padding-right: 64px;
+                                spacing: 0px;
+
+                                Text {
+                                    text: "实例";
+                                    font-size: Tokens.font-micro;
+                                    color: Tokens.text-tertiary;
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                }
+                                Text {
+                                    text: "版本";
+                                    width: 120px;
+                                    font-size: Tokens.font-micro;
+                                    color: Tokens.text-tertiary;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: "加载器";
+                                    width: 140px;
+                                    font-size: Tokens.font-micro;
+                                    color: Tokens.text-tertiary;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: "上次游玩";
+                                    width: 204px;
+                                    font-size: Tokens.font-micro;
+                                    color: Tokens.text-tertiary;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: "操作";
+                                    width: 104px;
+                                    font-size: Tokens.font-micro;
+                                    color: Tokens.text-tertiary;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            height: 1px;
+                            background: Tokens.divider-row;
+                        }
+
+                        ListView {
+                            vertical-stretch: 1;
+
+                            for inst in root.instances : Rectangle {
+                                height: 88px;
+                                background: row-touch.has-hover ? Tokens.surface-hover : transparent;
+
+                                Rectangle {
+                                    y: parent.height - 1px;
+                                    x: 24px;
+                                    width: parent.width - 48px;
+                                    height: 1px;
+                                    background: Tokens.divider-row;
+                                }
+
+                                HorizontalLayout {
+                                    padding-left: 24px;
+                                    padding-right: 64px;
+                                    spacing: 0px;
+                                    cross-axis-alignment: center;
+
+                                    // 多选态：行首复选框（其它列右移 28，版本列仍落在 x=560）
+                                    if root.page.selecting : Checkbox {
+                                        checked: inst.checked;
+                                        toggled => { root.toggle-select(inst.id); }
+                                    }
+                                    if root.page.selecting : Rectangle { width: 12px; background: transparent; }
+
+                                    InstanceAvatar {
+                                        avatar-size: 44px;
+                                        source: inst.icon;
+                                        has-image: inst.has-icon;
+                                        fallback: inst.icon-text;
+                                    }
+
+                                    Rectangle { width: 14px; background: transparent; }
+
+                                    // 名称 + 当前徽标 / 路径。
+                                    // 行布局是 cross-axis center，容器必须给满行高，否则被压成 0 高。
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                        height: 88px;
+                                        clip: true;
+
+                                        HorizontalLayout {
+                                            y: 28px;
+                                            width: parent.width;
+                                            height: 20px;
+                                            spacing: 8px;
+
+                                            Text {
+                                                text: inst.name;
+                                                font-size: 13.5px;
+                                                font-weight: 600;
+                                                color: Tokens.text;
+                                                vertical-alignment: center;
+                                                horizontal-alignment: left;
+                                                horizontal-stretch: 0;
+                                                overflow: elide;
+                                            }
+
+                                            if inst.selected : Text {
+                                                text: "当前";
+                                                font-size: Tokens.font-micro;
+                                                font-weight: 500;
+                                                color: Tokens.primary;
+                                                vertical-alignment: center;
+                                                horizontal-alignment: left;
+                                                horizontal-stretch: 0;
+                                            }
+
+                                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                                        }
+
+                                        Text {
+                                            y: 50px;
+                                            width: parent.width;
+                                            height: 16px;
+                                            text: inst.dir-label;
+                                            font-size: 10.5px;
+                                            font-family: "monospace";
+                                            color: Tokens.text-tertiary;
+                                            vertical-alignment: center;
+                                            horizontal-alignment: left;
+                                            overflow: elide;
+                                        }
+                                    }
+
+                                    Text {
+                                        width: 120px;
+                                        text: inst.mc-version;
+                                        font-size: 11.5px;
+                                        color: Tokens.text-cell;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        width: 140px;
+                                        text: inst.loader-name;
+                                        font-size: 11.5px;
+                                        color: Tokens.text-cell;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        width: 204px;
+                                        text: inst.last-played;
+                                        font-size: 11.5px;
+                                        color: Tokens.text-cell;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+
+                                    // 操作列：启动（64×28）+ ⋯（28）。多选态留同宽空格，保证列不位移
+                                    if !root.page.selecting : HorizontalLayout {
+                                        width: 104px;
+                                        spacing: 12px;
+
+                                        Rectangle {
+                                            width: 64px;
+                                            height: 28px;
+                                            border-radius: 7px;
+                                            background: launch-touch.has-hover ? Tokens.canvas : Tokens.surface;
+                                            border-width: 1px;
+                                            border-color: Tokens.border-strong;
+
+                                            HorizontalLayout {
+                                                padding-left: 10px;
+                                                padding-right: 10px;
+                                                spacing: 4px;
+
+                                                Icon {
+                                                    kind: 7;
+                                                    icon-size: 12px;
+                                                    weight: 1.5px;
+                                                    icon-color: Tokens.text;
+                                                }
+                                                Text {
+                                                    text: "启动";
+                                                    font-size: 11.5px;
+                                                    color: Tokens.text;
+                                                    vertical-alignment: center;
+                                                    horizontal-alignment: left;
+                                                    horizontal-stretch: 1;
+                                                }
+                                            }
+
+                                            launch-touch := TouchArea {
+                                                mouse-cursor: pointer;
+                                                clicked => { root.launch-instance(inst.id); }
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            width: 28px;
+                                            height: 28px;
+                                            border-radius: 6px;
+                                            background: more-touch.has-hover ? Tokens.surface-hover : transparent;
+
+                                            Icon {
+                                                kind: 25;
+                                                icon-size: 16px;
+                                                weight: 2.2px;
+                                                icon-color: Tokens.text-tertiary;
+                                                x: (parent.width - self.width) / 2;
+                                                y: (parent.height - self.height) / 2;
+                                            }
+
+                                            more-touch := TouchArea {
+                                                mouse-cursor: pointer;
+                                                clicked => {
+                                                    root.menu-target = inst.id;
+                                                    // PopupWindow 用窗口坐标；右对齐到行尾
+                                                    root.menu-x = more-touch.absolute-position.x - 168px + 28px;
+                                                    root.menu-y = more-touch.absolute-position.y + 30px;
+                                                    row-menu.show();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if root.page.selecting : Rectangle { width: 104px; background: transparent; }
+                                }
+
+                                row-touch := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => {
+                                        if (root.page.selecting) {
+                                            root.toggle-select(inst.id);
+                                        } else {
+                                            root.open-instance(inst.id);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if root.page.selecting : Rectangle {
+                            height: 48px;
+                            background: transparent;
+
+                            // 布局子项不能自设宽度，所以内嵌一层再定宽。
+                            Rectangle {
+                            x: 24px;
+                            width: parent.width - 48px;
+                            height: 48px;
+                            border-radius: 8px;
+                            background: Tokens.select-bar;
+
+                            Text {
+                                x: 20px;
+                                height: parent.height;
+                                text: "已选 " + root.page.selected-count + " 个实例";
+                                font-size: 12.5px;
+                                font-weight: 600;
+                                color: Tokens.text;
+                                vertical-alignment: center;
+                            }
+
+                            // 取消（文字按钮）
+                            Rectangle {
+                                x: parent.width - 148px;
+                                y: 10px;
+                                width: 48px;
+                                height: 28px;
+                                border-radius: 7px;
+                                background: cancel-touch.has-hover ? Tokens.surface-hover : transparent;
+
+                                Text {
+                                    text: "取消";
+                                    font-size: 11.5px;
+                                    color: Tokens.primary;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+
+                                cancel-touch := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.cancel-select(); }
+                                }
+                            }
+
+                            // 删除（仅移除记录，游戏文件保留；确认框里可选一并删除）
+                            Rectangle {
+                                x: parent.width - 212px;
+                                y: 10px;
+                                width: 64px;
+                                height: 28px;
+                                border-radius: 7px;
+                                background: del-touch.has-hover ? Tokens.danger-soft : Tokens.surface;
+                                border-width: 1px;
+                                border-color: Tokens.border-strong;
+
+                                Text {
+                                    text: "删除";
+                                    font-size: 11.5px;
+                                    color: Tokens.danger;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+
+                                del-touch := TouchArea {
+                                    mouse-cursor: root.page.selected-count > 0 ? pointer : default;
+                                    clicked => { if (root.page.selected-count > 0) { root.remove-selected(); } }
+                                }
+                            }
+
+                            // 导出（逐个导出 mrpack）
+                            Rectangle {
+                                x: parent.width - 292px;
+                                y: 10px;
+                                width: 72px;
+                                height: 28px;
+                                border-radius: 7px;
+                                background: exp-touch.has-hover ? Tokens.canvas : Tokens.surface;
+                                border-width: 1px;
+                                border-color: Tokens.border-strong;
+
+                                Text {
+                                    text: "导出";
+                                    font-size: 11.5px;
+                                    color: Tokens.text;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+
+                                exp-touch := TouchArea {
+                                    mouse-cursor: root.page.selected-count > 0 ? pointer : default;
+                                    clicked => { if (root.page.selected-count > 0) { root.export-selected(); } }
+                                }
+                            }
+
+                            // 启动
+                            Rectangle {
+                                x: parent.width - 372px;
+                                y: 10px;
+                                width: 72px;
+                                height: 28px;
+                                border-radius: 7px;
+                                background: run-touch.has-hover ? Tokens.primary-hover : Tokens.primary;
+                                opacity: root.page.selected-count > 0 ? 1.0 : 0.5;
+
+                                Text {
+                                    text: "启动";
+                                    font-size: 11.5px;
+                                    font-weight: 600;
+                                    color: Tokens.text-inverse;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+
+                                run-touch := TouchArea {
+                                    mouse-cursor: root.page.selected-count > 0 ? pointer : default;
+                                    clicked => { if (root.page.selected-count > 0) { root.launch-selected(); } }
+                                }
+                            }
+                            }
+                        }
+
+                        if root.page.selecting : Rectangle { height: 48px; background: transparent; }
+                    }
+                }
+            }
+        }
+    }
+
+    // 行尾菜单（PopupWindow 只能有一个，放在页面根上；位置由点击时算好的窗口坐标给）
+    row-menu := Menu {
+        px: root.menu-x;
+        py: root.menu-y;
+        MenuItem {
+            label: "启动";
+            icon: 26;
+            clicked => { root.launch-instance(root.menu-target); }
+        }
+        MenuItem {
+            label: "在文件夹中显示";
+            icon: 17;
+            clicked => { root.reveal-instance(root.menu-target); }
+        }
+        MenuItem {
+            label: "多选";
+            icon: 25;
+            clicked => { root.start-select(root.menu-target); }
+        }
+        MenuItem {
+            label: "删除实例";
+            icon: 20;
+            danger: true;
+            clicked => { root.remove-instance(root.menu-target); }
+        }
+    }
+}

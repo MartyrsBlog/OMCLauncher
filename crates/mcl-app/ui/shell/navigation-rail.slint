@@ -1,0 +1,208 @@
+import { Tokens } from "../theme.slint";
+import { Icon } from "../components/icon.slint";
+
+// 导航项：图标 + 文字；选中态为强调色填充胶囊 + 白字（HIG source list）
+component RailItem inherits Rectangle {
+    in property <int> icon: 1;
+    in property <string> text;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 40px;
+    border-radius: Tokens.radius-sm;
+    // 未选中也保留 1px 透明描边，避免选中时文字横向跳动
+    border-width: 1px;
+    border-color: root.selected ? Tokens.nav-active : transparent;
+    background: root.selected
+        ? Tokens.nav-active
+        : touch.has-hover ? Tokens.nav-hover : transparent;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 11px;
+        padding-bottom: 11px;
+        spacing: 10px;
+
+        Icon {
+            kind: root.icon;
+            icon-size: 18px;
+            icon-color: root.selected ? Tokens.nav-text-active : Tokens.nav-text;
+        }
+
+        Text {
+            text: root.text;
+            font-size: 13px;
+            font-weight: root.selected ? 600 : 400;
+            color: root.selected ? Tokens.nav-text-active : Tokens.nav-text;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// 左侧导航栏（210px）：品牌 → 4 个顶层目的地 → 账号卡片
+export component NavigationRail inherits Rectangle {
+    // 0 首页 / 1 实例库 / 2 下载中心 / 3 设置 / 6 账号（无高亮）
+    in property <int> active: 0;
+    in property <string> account-name: "";
+    in property <string> account-subtitle: "";
+    in property <string> account-initial: "";
+    in property <image> account-avatar;
+    in property <bool> account-avatar-ready: false;
+
+    callback navigate(int);
+    callback open-account();
+
+    width: Tokens.nav-width;
+    background: Tokens.nav-surface;
+
+    VerticalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 0px;
+        padding-bottom: 8px;
+        spacing: 2px;
+
+        // ── 品牌 ──
+        HorizontalLayout {
+            height: 64px;
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 19px;
+            padding-bottom: 19px;
+            spacing: 10px;
+
+            Rectangle {
+                width: 26px;
+                height: 26px;
+                background: transparent;
+
+                Path {
+                    width: 26px; height: 26px;
+                    viewbox-width: 24; viewbox-height: 24;
+                    commands: "M12 2.2 L21.4 7.2 L12 12.2 L2.6 7.2 Z";
+                    fill: #4C9CF5;
+                    stroke-width: 0px;
+                }
+                Path {
+                    width: 26px; height: 26px;
+                    viewbox-width: 24; viewbox-height: 24;
+                    commands: "M2.6 7.2 L12 12.2 L12 21.8 L2.6 16.8 Z";
+                    fill: #0066CC;
+                    stroke-width: 0px;
+                }
+                Path {
+                    width: 26px; height: 26px;
+                    viewbox-width: 24; viewbox-height: 24;
+                    commands: "M21.4 7.2 L12 12.2 L12 21.8 L21.4 16.8 Z";
+                    fill: #00539F;
+                    stroke-width: 0px;
+                }
+            }
+
+            Text {
+                text: "OMCLauncher";
+                font-size: 15px;
+                font-weight: 700;
+                letter-spacing: -0.2px;
+                color: Tokens.nav-brand;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+        }
+
+        Rectangle { height: 6px; background: transparent; }
+
+        RailItem { icon: 1; text: "首页";     selected: root.active == 0; clicked => { root.navigate(0); } }
+        RailItem { icon: 2; text: "实例库";   selected: root.active == 1; clicked => { root.navigate(1); } }
+        RailItem { icon: 3; text: "下载中心"; selected: root.active == 2; clicked => { root.navigate(2); } }
+
+        Rectangle { height: 12px; background: transparent; }
+
+        RailItem { icon: 6; text: "设置"; selected: root.active == 3; clicked => { root.navigate(3); } }
+
+        Rectangle { vertical-stretch: 1; background: transparent; }
+
+        // ── 账号卡片 ──
+        Rectangle {
+            height: 64px;
+            border-radius: Tokens.radius-md;
+            background: touch-account.has-hover ? Tokens.nav-card-hover : Tokens.nav-card;
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                padding-top: 10px;
+                padding-bottom: 10px;
+                spacing: 10px;
+
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 8px;
+                    clip: true;
+                    background: Tokens.nav-avatar;
+
+                    if root.account-avatar-ready : Image {
+                        width: 100%;
+                        height: 100%;
+                        source: root.account-avatar;
+                        image-fit: cover;
+                        image-rendering: pixelated;
+                    }
+
+                    if !root.account-avatar-ready : Text {
+                        text: root.account-initial;
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Tokens.nav-brand;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                VerticalLayout {
+                    padding-top: 4px;
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+
+                    Text {
+                        text: root.account-name;
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: Tokens.nav-brand;
+                        height: 15px;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: root.account-subtitle;
+                        font-size: 11px;
+                        color: Tokens.nav-group;
+                        height: 13px;
+                        overflow: elide;
+                    }
+                }
+
+                Text {
+                    text: "···";
+                    font-size: 13px;
+                    color: Tokens.nav-text;
+                    vertical-alignment: center;
+                }
+            }
+
+            touch-account := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.open-account(); }
+            }
+        }
+    }
+}

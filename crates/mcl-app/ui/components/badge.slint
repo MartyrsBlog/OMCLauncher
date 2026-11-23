@@ -1,0 +1,67 @@
+import { Tokens } from "../theme.slint";
+
+export enum BadgeTone {
+    Neutral,
+    Success,
+    Warning,
+    Danger,
+    Info,
+    OnDark,
+}
+
+// 状态胶囊：比 StatusTag 更通用（浅底 + 语义文字，可选前置圆点）。
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <BadgeTone> tone: BadgeTone.Neutral;
+    in property <bool> dot: false;
+
+    height: 24px;
+    horizontal-stretch: 0;
+    border-radius: 12px;
+    background: root.tone == BadgeTone.Success
+        ? Tokens.success-soft
+        : root.tone == BadgeTone.Warning
+            ? Tokens.warning-soft
+            : root.tone == BadgeTone.Danger
+                ? Tokens.danger-soft
+                : root.tone == BadgeTone.Info
+                    ? Tokens.info-soft
+                    : root.tone == BadgeTone.OnDark ? #FFFFFF1F : Tokens.surface-muted;
+
+    HorizontalLayout {
+        alignment: center;
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+
+        if root.dot : Rectangle {
+            width: 6px;
+            height: 6px;
+            border-radius: 3px;
+            background: root.tone == BadgeTone.Success
+                ? Tokens.success
+                : root.tone == BadgeTone.Warning
+                    ? Tokens.warning
+                    : root.tone == BadgeTone.Danger
+                        ? Tokens.danger
+                        : root.tone == BadgeTone.Info
+                            ? Tokens.info
+                            : root.tone == BadgeTone.OnDark ? #FFFFFF : Tokens.text-tertiary;
+        }
+
+        Text {
+            text: root.text;
+            font-size: 12px;
+            color: root.tone == BadgeTone.Success
+                ? Tokens.success
+                : root.tone == BadgeTone.Warning
+                    ? Tokens.warning
+                    : root.tone == BadgeTone.Danger
+                        ? Tokens.danger
+                        : root.tone == BadgeTone.Info
+                            ? Tokens.info
+                            : root.tone == BadgeTone.OnDark ? Tokens.text-inverse : Tokens.text-secondary;
+            vertical-alignment: center;
+        }
+    }
+}

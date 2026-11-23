@@ -1,0 +1,42 @@
+import { Tokens } from "../theme.slint";
+import { Icon } from "./icon.slint";
+
+// 文字链接（查看全部 / 检查设置 / 加载更多）。
+// 交互区在两个轴上都是 100%，并且声明在文字之前，避免 0×0 命中区。
+export component LinkText inherits Rectangle {
+    in property <string> text;
+    in property <int> icon: 0;
+    in property <color> link-color: Tokens.primary;
+
+    callback clicked();
+
+    height: 20px;
+    horizontal-stretch: 0;
+    background: transparent;
+
+    HorizontalLayout {
+        alignment: start;
+        spacing: 4px;
+
+        Text {
+            text: root.text;
+            font-size: 12px;
+            color: root.link-color;
+            vertical-alignment: center;
+        }
+
+        if root.icon != 0 : Icon {
+            kind: root.icon;
+            icon-size: 12px;
+            weight: 1.8px;
+            icon-color: root.link-color;
+        }
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

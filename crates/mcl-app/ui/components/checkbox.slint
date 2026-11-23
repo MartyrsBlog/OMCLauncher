@@ -1,0 +1,33 @@
+import { Tokens } from "../theme.slint";
+
+// 选中 = 主色填充 + 白勾；未选中 = 白底 + 强描边。
+export component Checkbox inherits Rectangle {
+    in property <bool> checked: false;
+    // 只读（批量条「全选」这类场景不需要，但保留语义）
+    in property <bool> enabled: true;
+    callback toggled();
+
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    background: root.checked ? Tokens.primary : Tokens.surface;
+    border-width: root.checked ? 0px : 1px;
+    border-color: Tokens.border-strong;
+    opacity: root.enabled ? 1.0 : 0.5;
+
+    if root.checked : Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 16;
+        viewbox-height: 16;
+        commands: "M4.2 8.4 L6.9 11 L11.8 5.6";
+        stroke: Tokens.text-inverse;
+        stroke-width: 1.8px;
+        fill: transparent;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if (root.enabled) { root.toggled(); } }
+    }
+}

@@ -1,0 +1,19 @@
+[package]
+name = "mcl-core"
+description = "OMCLauncher 业务核心库（无 UI 依赖，可被 GUI/CLI 复用）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+keyring.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+zip.workspace = true
